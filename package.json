@@ -1,0 +1,34 @@
+{
+  "name": "mute-bg-audio",
+  "description": "Chrome extension that removes background music from videos while keeping speech.",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@12.4.2",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "build:e2e": "wxt build --mode e2e",
+    "zip": "wxt zip",
+    "compile": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "node scripts/make-test-media.mjs --if-missing && pnpm build:e2e && playwright test",
+    "fetch-models": "node scripts/fetch-models.mjs",
+    "postinstall": "wxt prepare",
+    "make-test-media": "node scripts/make-test-media.mjs",
+    "make-notices": "node scripts/make-notices.mjs"
+  },
+  "dependencies": {
+    "onnxruntime-web": "1.30.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/audioworklet": "^0.0.100",
+    "@webgpu/types": "^0.1.74",
+    "esbuild": "^0.28.2",
+    "onnxruntime-node": "1.30.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "wxt": "0.21.4"
+  }
+}

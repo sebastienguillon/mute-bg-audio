@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Remove Background Music</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="header">
+      <img class="logo" src="/icon/32.png" alt="" width="20" height="20" />
+      <h1>Remove Background Music</h1>
+    </header>
+
+    <main>
+      <section class="card" aria-label="This tab">
+        <label class="row toggle-row">
+          <span class="row-label">Remove music on this tab</span>
+          <input id="tab-toggle" class="switch" type="checkbox" role="switch" />
+        </label>
+
+        <div id="status" class="status" role="status" aria-atomic="true">
+          <span id="status-dot" class="dot" data-tone="idle" aria-hidden="true"></span>
+          <div class="status-text">
+            <p class="status-headline"><span id="status-headline">Checking this tab…</span><span
+                id="status-progress" class="status-progress" aria-hidden="true"></span></p>
+            <p id="status-detail" class="status-detail" hidden></p>
+            <p id="status-latency" class="status-latency" hidden></p>
+          </div>
+        </div>
+
+        <div id="reload" class="capture" hidden>
+          <button id="reload-button" class="button primary" type="button">Reload page</button>
+        </div>
+
+        <div id="capture" class="capture" hidden>
+          <button id="capture-button" class="button" type="button" aria-describedby="capture-hint">
+            Use tab capture instead
+          </button>
+          <p id="capture-hint" class="hint">Chrome will show its sharing indicator.</p>
+        </div>
+
+        <label id="auto-row" class="row check-row" hidden>
+          <input id="auto-site" type="checkbox" />
+          <span>Always run on <strong id="auto-origin"></strong></span>
+        </label>
+      </section>
+
+      <section class="settings" aria-label="Sound">
+        <div class="field">
+          <div class="field-head">
+            <label for="reduction">Music reduction</label>
+            <output id="reduction-value" for="reduction" class="value"></output>
+          </div>
+          <input id="reduction" type="range" min="0" max="11" step="1" />
+          <div class="scale" aria-hidden="true"><span>0 dB</span><span>Remove</span></div>
+        </div>
+
+        <label class="row check-row">
+          <input id="gap" type="checkbox" />
+          <span>Extra reduction between sentences</span>
+        </label>
+
+        <div class="field">
+          <label for="quality">Quality</label>
+          <select id="quality">
+            <option value="auto">Best available (GPU look-ahead)</option>
+            <option value="realtime">CPU only (real-time)</option>
+          </select>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <a class="footer-link" href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">Licenses</a>
+      <label class="row">
+        <span>Extension enabled</span>
+        <input id="master" class="switch small" type="checkbox" role="switch" />
+      </label>
+    </footer>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

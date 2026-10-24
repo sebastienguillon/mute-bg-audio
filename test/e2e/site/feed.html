@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Feed test page</title>
+<script>document.documentElement.dataset.bgmrDebug = '1';</script>
+</head>
+<body>
+<!--
+  A scrolling feed of progressive videos (/media/video.webm?post=<i>), played with sound one after
+  another and taken out of the page when scrolled past:
+    feed.show(i)            adds post i (the same element again if it was shown before) and plays it
+    feed.remove(i, pause)   removes post i from the page, after pausing it or while it plays
+-->
+<main id="feed"></main>
+<script>
+const main = document.getElementById('feed');
+const posts = [];
+window.feed = {
+  async show(i) {
+    let video = posts[i];
+    if (!video) {
+      video = posts[i] = document.createElement('video');
+      video.playsInline = true;
+      video.style.width = '480px';
+      video.src = `/media/video.webm?post=${i}`;
+    }
+    const article = document.createElement('article');
+    article.append(video);
+    main.append(article);
+    await video.play();
+  },
+  remove(i, pause) {
+    const video = posts[i];
+    if (pause) video.pause();
+    video.parentElement.remove();
+  },
+};
+</script>
+</body>
+</html>

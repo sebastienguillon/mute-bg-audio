@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Progressive test player</title>
+<script>document.documentElement.dataset.bgmrDebug = '1';</script>
+</head>
+<body>
+<!-- ?src= overrides the media URL (e.g. a cross-origin host) and ?co=anonymous sets crossOrigin. -->
+<video playsinline style="width:640px"></video>
+<script>
+const p = new URLSearchParams(location.search);
+const v = document.querySelector('video');
+if (p.get('co')) v.crossOrigin = p.get('co');
+v.src = p.get('src') ?? '/media/video.webm';
+</script>
+</body>
+</html>

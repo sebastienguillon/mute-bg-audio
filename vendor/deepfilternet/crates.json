@@ -1,0 +1,1101 @@
+[
+  {
+    "name": "addr2line",
+    "version": "0.21.0",
+    "license": "Apache-2.0 OR MIT",
+    "repository": "https://github.com/gimli-rs/addr2line",
+    "authors": [],
+    "copyrights": [
+      "Copyright (c) 2016-2018 The gimli Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "adler",
+    "version": "1.0.2",
+    "license": "0BSD OR MIT OR Apache-2.0",
+    "repository": "https://github.com/jonas-schievink/adler.git",
+    "authors": [
+      "Jonas Schievink"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "ahash",
+    "version": "0.8.11",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/tkaitchuck/ahash",
+    "authors": [
+      "Tom Kaitchuck"
+    ],
+    "copyrights": [
+      "Copyright (c) 2018 Tom Kaitchuck"
+    ],
+    "notices": []
+  },
+  {
+    "name": "aho-corasick",
+    "version": "1.1.3",
+    "license": "Unlicense OR MIT",
+    "repository": "https://github.com/BurntSushi/aho-corasick",
+    "authors": [
+      "Andrew Gallant"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015 Andrew Gallant"
+    ],
+    "notices": []
+  },
+  {
+    "name": "anyhow",
+    "version": "1.0.82",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/dtolnay/anyhow",
+    "authors": [
+      "David Tolnay"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "backtrace",
+    "version": "0.3.71",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/backtrace-rs",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Alex Crichton"
+    ],
+    "notices": []
+  },
+  {
+    "name": "bit-set",
+    "version": "0.5.3",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/contain-rs/bit-set",
+    "authors": [
+      "Alexis Beingessner"
+    ],
+    "copyrights": [
+      "Copyright (c) 2016 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "bit-vec",
+    "version": "0.6.3",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/contain-rs/bit-vec",
+    "authors": [
+      "Alexis Beingessner"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "byteorder",
+    "version": "1.5.0",
+    "license": "Unlicense OR MIT",
+    "repository": "https://github.com/BurntSushi/byteorder",
+    "authors": [
+      "Andrew Gallant"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015 Andrew Gallant"
+    ],
+    "notices": []
+  },
+  {
+    "name": "bytes",
+    "version": "1.6.0",
+    "license": "MIT",
+    "repository": "https://github.com/tokio-rs/bytes",
+    "authors": [
+      "Carl Lerche",
+      "Sean McArthur"
+    ],
+    "copyrights": [
+      "Copyright (c) 2018 Carl Lerche"
+    ],
+    "notices": []
+  },
+  {
+    "name": "cfg-if",
+    "version": "1.0.0",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/alexcrichton/cfg-if",
+    "authors": [
+      "Alex Crichton"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Alex Crichton"
+    ],
+    "notices": []
+  },
+  {
+    "name": "console_error_panic_hook",
+    "version": "0.1.7",
+    "license": "Apache-2.0 OR MIT",
+    "repository": "https://github.com/rustwasm/console_error_panic_hook",
+    "authors": [
+      "Nick Fitzgerald"
+    ],
+    "copyrights": [
+      "Copyright (c) 2018 Nick Fitzgerald"
+    ],
+    "notices": []
+  },
+  {
+    "name": "const-random",
+    "version": "0.1.18",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/tkaitchuck/constrandom",
+    "authors": [
+      "Tom Kaitchuck"
+    ],
+    "copyrights": [
+      "Copyright (c) 2016 Amanieu d'Antras"
+    ],
+    "notices": []
+  },
+  {
+    "name": "crc32fast",
+    "version": "1.4.0",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/srijs/rust-crc32fast",
+    "authors": [
+      "Sam Rijs",
+      "Alex Crichton"
+    ],
+    "copyrights": [
+      "Copyright (c) 2018 Sam Rijs, Alex Crichton and contributors"
+    ],
+    "notices": []
+  },
+  {
+    "name": "crossbeam-channel",
+    "version": "0.5.12",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/crossbeam-rs/crossbeam",
+    "authors": [],
+    "copyrights": [
+      "Copyright (c) 2019 The Crossbeam Project Developers"
+    ],
+    "notices": [
+      "LICENSE-THIRD-PARTY"
+    ]
+  },
+  {
+    "name": "crossbeam-utils",
+    "version": "0.8.19",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/crossbeam-rs/crossbeam",
+    "authors": [],
+    "copyrights": [
+      "Copyright (c) 2019 The Crossbeam Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "dlv-list",
+    "version": "0.5.2",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/sgodwincs/dlv-list-rs",
+    "authors": [
+      "Scott Godwin"
+    ],
+    "copyrights": [
+      "Copyright (c) 2022 Scott Godwin"
+    ],
+    "notices": []
+  },
+  {
+    "name": "downcast-rs",
+    "version": "1.2.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/marcianx/downcast-rs",
+    "authors": [
+      "Ashish Myles",
+      "Runji Wang"
+    ],
+    "copyrights": [
+      "Copyright (c) 2020 Ashish Myles and contributors"
+    ],
+    "notices": []
+  },
+  {
+    "name": "dyn-clone",
+    "version": "1.0.17",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/dtolnay/dyn-clone",
+    "authors": [
+      "David Tolnay"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "either",
+    "version": "1.11.0",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rayon-rs/either",
+    "authors": [
+      "bluss"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015"
+    ],
+    "notices": []
+  },
+  {
+    "name": "filetime",
+    "version": "0.2.23",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/alexcrichton/filetime",
+    "authors": [
+      "Alex Crichton"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Alex Crichton"
+    ],
+    "notices": []
+  },
+  {
+    "name": "flate2",
+    "version": "1.0.30",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/flate2-rs",
+    "authors": [
+      "Alex Crichton",
+      "Josh Triplett"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Alex Crichton"
+    ],
+    "notices": []
+  },
+  {
+    "name": "getrandom",
+    "version": "0.2.14",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-random/getrandom",
+    "authors": [
+      "The Rand Project Developers"
+    ],
+    "copyrights": [
+      "Copyright (c) 2018-2024 The rust-random Project Developers",
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "gimli",
+    "version": "0.28.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/gimli-rs/gimli",
+    "authors": [],
+    "copyrights": [
+      "Copyright (c) 2015 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "half",
+    "version": "2.4.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/starkat99/half-rs",
+    "authors": [
+      "Kathryn Long"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "hashbrown",
+    "version": "0.14.5",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/hashbrown",
+    "authors": [
+      "Amanieu d'Antras"
+    ],
+    "copyrights": [
+      "Copyright (c) 2016 Amanieu d'Antras"
+    ],
+    "notices": []
+  },
+  {
+    "name": "itertools",
+    "version": "0.12.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-itertools/itertools",
+    "authors": [
+      "bluss"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015"
+    ],
+    "notices": []
+  },
+  {
+    "name": "js-sys",
+    "version": "0.3.69",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rustwasm/wasm-bindgen/tree/master/crates/js-sys",
+    "authors": [
+      "The wasm-bindgen Developers"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Alex Crichton"
+    ],
+    "notices": []
+  },
+  {
+    "name": "lazy_static",
+    "version": "1.4.0",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang-nursery/lazy-static.rs",
+    "authors": [
+      "Marvin Löbel"
+    ],
+    "copyrights": [
+      "Copyright (c) 2010 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "libc",
+    "version": "0.2.191",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/libc",
+    "authors": [],
+    "copyrights": [
+      "Copyright (c) The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "libm",
+    "version": "0.2.8",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/libm",
+    "authors": [
+      "Jorge Aparicio"
+    ],
+    "copyrights": [
+      "Copyright (c) 2018 Jorge Aparicio"
+    ],
+    "notices": []
+  },
+  {
+    "name": "log",
+    "version": "0.4.21",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/log",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "maplit",
+    "version": "1.0.2",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/bluss/maplit",
+    "authors": [
+      "bluss"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015"
+    ],
+    "notices": []
+  },
+  {
+    "name": "matrixmultiply",
+    "version": "0.3.8",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/bluss/matrixmultiply/",
+    "authors": [
+      "bluss",
+      "R. Janis Goldschmidt"
+    ],
+    "copyrights": [
+      "Copyright (c) 2016 - 2023 Ulrik Sverdrup \"bluss\"",
+      "Copyright (c) 2021 DutchGhost [constparse.rs]"
+    ],
+    "notices": []
+  },
+  {
+    "name": "memchr",
+    "version": "2.7.2",
+    "license": "Unlicense OR MIT",
+    "repository": "https://github.com/BurntSushi/memchr",
+    "authors": [
+      "Andrew Gallant",
+      "bluss"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015 Andrew Gallant"
+    ],
+    "notices": []
+  },
+  {
+    "name": "memmap2",
+    "version": "0.9.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/RazrFalcon/memmap2-rs",
+    "authors": [
+      "Dan Burkert",
+      "Yevhenii Reizner"
+    ],
+    "copyrights": [
+      "Copyright (c) 2020 Yevhenii Reizner",
+      "Copyright (c) 2015 Dan Burkert"
+    ],
+    "notices": []
+  },
+  {
+    "name": "minimal-lexical",
+    "version": "0.2.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/Alexhuszagh/minimal-lexical",
+    "authors": [
+      "Alex Huszagh"
+    ],
+    "copyrights": [
+      "Copyright (c) 2009 The Go Authors. All rights reserved."
+    ],
+    "notices": [
+      "LICENSE.md"
+    ]
+  },
+  {
+    "name": "miniz_oxide",
+    "version": "0.7.2",
+    "license": "MIT OR Zlib OR Apache-2.0",
+    "repository": "https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide",
+    "authors": [
+      "Frommi",
+      "oyvindln"
+    ],
+    "copyrights": [
+      "Copyright (c) 2017 Frommi"
+    ],
+    "notices": []
+  },
+  {
+    "name": "ndarray",
+    "version": "0.15.6",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-ndarray/ndarray",
+    "authors": [
+      "Ulrik Sverdrup \"bluss\"",
+      "Jim Turner"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015 - 2021 Ulrik Sverdrup \"bluss\""
+    ],
+    "notices": []
+  },
+  {
+    "name": "nom",
+    "version": "7.1.3",
+    "license": "MIT",
+    "repository": "https://github.com/Geal/nom",
+    "authors": [
+      "contact@geoffroycouprie.com"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014-2019 Geoffroy Couprie"
+    ],
+    "notices": []
+  },
+  {
+    "name": "num-complex",
+    "version": "0.4.5",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-num/num-complex",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "num-integer",
+    "version": "0.1.46",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-num/num-integer",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "num-traits",
+    "version": "0.2.19",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-num/num-traits",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "object",
+    "version": "0.32.2",
+    "license": "Apache-2.0 OR MIT",
+    "repository": "https://github.com/gimli-rs/object",
+    "authors": [],
+    "copyrights": [
+      "Copyright (c) 2015 The Gimli Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "once_cell",
+    "version": "1.19.0",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/matklad/once_cell",
+    "authors": [
+      "Aleksey Kladov"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "ordered-multimap",
+    "version": "0.7.3",
+    "license": "MIT",
+    "repository": "https://github.com/sgodwincs/ordered-multimap-rs",
+    "authors": [
+      "Scott Godwin"
+    ],
+    "copyrights": [
+      "Copyright (c) 2018 sgodwincs"
+    ],
+    "notices": []
+  },
+  {
+    "name": "ppv-lite86",
+    "version": "0.2.17",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/cryptocorrosion/cryptocorrosion",
+    "authors": [
+      "The CryptoCorrosion Contributors"
+    ],
+    "copyrights": [
+      "Copyright (c) 2019 The CryptoCorrosion Contributors"
+    ],
+    "notices": []
+  },
+  {
+    "name": "primal-check",
+    "version": "0.3.3",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/huonw/primal",
+    "authors": [
+      "Huon Wilson"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Huon Wilson"
+    ],
+    "notices": []
+  },
+  {
+    "name": "prost",
+    "version": "0.11.9",
+    "license": "Apache-2.0",
+    "repository": "https://github.com/tokio-rs/prost",
+    "authors": [
+      "Dan Burkert",
+      "Lucio Franco",
+      "Tokio Contributors"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "rand",
+    "version": "0.8.5",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-random/rand",
+    "authors": [
+      "The Rand Project Developers",
+      "The Rust Project Developers"
+    ],
+    "copyrights": [
+      "Copyright 2018 Developers of the Rand project",
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "rand_chacha",
+    "version": "0.3.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-random/rand",
+    "authors": [
+      "The Rand Project Developers",
+      "The Rust Project Developers",
+      "The CryptoCorrosion Contributors"
+    ],
+    "copyrights": [
+      "Copyright 2018 Developers of the Rand project",
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "rand_core",
+    "version": "0.6.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-random/rand",
+    "authors": [
+      "The Rand Project Developers",
+      "The Rust Project Developers"
+    ],
+    "copyrights": [
+      "Copyright 2018 Developers of the Rand project",
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "rand_distr",
+    "version": "0.4.3",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-random/rand",
+    "authors": [
+      "The Rand Project Developers"
+    ],
+    "copyrights": [
+      "Copyright 2018 Developers of the Rand project"
+    ],
+    "notices": []
+  },
+  {
+    "name": "rawpointer",
+    "version": "0.2.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/bluss/rawpointer/",
+    "authors": [
+      "bluss"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015"
+    ],
+    "notices": []
+  },
+  {
+    "name": "realfft",
+    "version": "3.3.0",
+    "license": "MIT",
+    "repository": "https://github.com/HEnquist/realfft",
+    "authors": [
+      "HEnquist"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "regex",
+    "version": "1.10.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/regex",
+    "authors": [
+      "The Rust Project Developers",
+      "Andrew Gallant"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "regex-automata",
+    "version": "0.4.6",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/regex/tree/master/regex-automata",
+    "authors": [
+      "The Rust Project Developers",
+      "Andrew Gallant"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "regex-syntax",
+    "version": "0.8.3",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/regex/tree/master/regex-syntax",
+    "authors": [
+      "The Rust Project Developers",
+      "Andrew Gallant"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 The Rust Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "rubato",
+    "version": "0.14.1",
+    "license": "MIT",
+    "repository": "https://github.com/HEnquist/rubato",
+    "authors": [
+      "HEnquist"
+    ],
+    "copyrights": [
+      "Copyright (c) 2020 Henrik Enquist"
+    ],
+    "notices": []
+  },
+  {
+    "name": "rust-ini",
+    "version": "0.21.0",
+    "license": "MIT",
+    "repository": "https://github.com/zonyitoo/rust-ini",
+    "authors": [
+      "Y. T. Chung"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Y. T. CHUNG"
+    ],
+    "notices": []
+  },
+  {
+    "name": "rustc-demangle",
+    "version": "0.1.23",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/alexcrichton/rustc-demangle",
+    "authors": [
+      "Alex Crichton"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Alex Crichton"
+    ],
+    "notices": []
+  },
+  {
+    "name": "rustfft",
+    "version": "6.2.0",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/ejmahler/RustFFT",
+    "authors": [
+      "Allen Welkie",
+      "Elliott Mahler"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015 The RustFFT Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "same-file",
+    "version": "1.0.6",
+    "license": "Unlicense OR MIT",
+    "repository": "https://github.com/BurntSushi/same-file",
+    "authors": [
+      "Andrew Gallant"
+    ],
+    "copyrights": [
+      "Copyright (c) 2017 Andrew Gallant"
+    ],
+    "notices": []
+  },
+  {
+    "name": "scan_fmt",
+    "version": "0.2.6",
+    "license": "MIT",
+    "repository": "https://github.com/wlentz/scan_fmt",
+    "authors": [
+      "wlentz"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015 wlentz"
+    ],
+    "notices": []
+  },
+  {
+    "name": "serde",
+    "version": "1.0.200",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/serde-rs/serde",
+    "authors": [
+      "Erick Tryzelaar",
+      "David Tolnay"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "smallvec",
+    "version": "1.13.2",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/servo/rust-smallvec",
+    "authors": [
+      "The Servo Project Developers"
+    ],
+    "copyrights": [
+      "Copyright (c) 2018 The Servo Project Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "strength_reduce",
+    "version": "0.2.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "http://github.com/ejmahler/strength_reduce",
+    "authors": [
+      "Elliott Mahler"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015 The RustFFT Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "string-interner",
+    "version": "0.15.0",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/robbepop/string-interner",
+    "authors": [
+      "Robbepop"
+    ],
+    "copyrights": [
+      "Copyright (c) 2020 by Robin Freyler"
+    ],
+    "notices": []
+  },
+  {
+    "name": "tar",
+    "version": "0.4.40",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/alexcrichton/tar-rs",
+    "authors": [
+      "Alex Crichton"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Alex Crichton"
+    ],
+    "notices": []
+  },
+  {
+    "name": "thiserror",
+    "version": "1.0.59",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/dtolnay/thiserror",
+    "authors": [
+      "David Tolnay"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "tract-core",
+    "version": "0.21.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/snipsco/tract",
+    "authors": [
+      "Mathieu Poumeyrol"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "tract-data",
+    "version": "0.21.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/snipsco/tract",
+    "authors": [
+      "Mathieu Poumeyrol"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "tract-hir",
+    "version": "0.21.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/snipsco/tract",
+    "authors": [
+      "Mathieu Poumeyrol"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "tract-linalg",
+    "version": "0.21.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/snipsco/tract",
+    "authors": [
+      "Mathieu Poumeyrol"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "tract-nnef",
+    "version": "0.21.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/snipsco/tract",
+    "authors": [
+      "Mathieu Poumeyrol"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "tract-onnx",
+    "version": "0.21.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/snipsco/tract",
+    "authors": [
+      "Mathieu Poumeyrol"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "tract-onnx-opl",
+    "version": "0.21.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/snipsco/tract",
+    "authors": [
+      "Mathieu Poumeyrol"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "tract-pulse",
+    "version": "0.21.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/snipsco/tract",
+    "authors": [
+      "Mathieu Poumeyrol"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "tract-pulse-opl",
+    "version": "0.21.4",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/snipsco/tract",
+    "authors": [
+      "Mathieu Poumeyrol"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "transpose",
+    "version": "0.2.3",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/ejmahler/transpose",
+    "authors": [
+      "Elliott Mahler"
+    ],
+    "copyrights": [
+      "Copyright (c) 2022 The transpose Developers"
+    ],
+    "notices": []
+  },
+  {
+    "name": "trim-in-place",
+    "version": "0.1.7",
+    "license": "MIT",
+    "repository": "https://github.com/magiclen/trim-in-place",
+    "authors": [
+      "Magic Len"
+    ],
+    "copyrights": [
+      "Copyright (c) 2020 magiclen.org (Ron Li)"
+    ],
+    "notices": []
+  },
+  {
+    "name": "unicode-ident",
+    "version": "1.0.12",
+    "license": "(MIT OR Apache-2.0) AND Unicode-DFS-2016",
+    "repository": "https://github.com/dtolnay/unicode-ident",
+    "authors": [
+      "David Tolnay"
+    ],
+    "copyrights": [],
+    "notices": []
+  },
+  {
+    "name": "walkdir",
+    "version": "2.5.0",
+    "license": "Unlicense OR MIT",
+    "repository": "https://github.com/BurntSushi/walkdir",
+    "authors": [
+      "Andrew Gallant"
+    ],
+    "copyrights": [
+      "Copyright (c) 2015 Andrew Gallant"
+    ],
+    "notices": []
+  },
+  {
+    "name": "wasm-bindgen",
+    "version": "0.2.129",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/wasm-bindgen/wasm-bindgen",
+    "authors": [
+      "The wasm-bindgen Developers"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Alex Crichton"
+    ],
+    "notices": []
+  },
+  {
+    "name": "wasm-bindgen-shared",
+    "version": "0.2.129",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared",
+    "authors": [
+      "The wasm-bindgen Developers"
+    ],
+    "copyrights": [
+      "Copyright (c) 2014 Alex Crichton"
+    ],
+    "notices": []
+  },
+  {
+    "name": "zerocopy",
+    "version": "0.7.33",
+    "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
+    "repository": "https://github.com/google/zerocopy",
+    "authors": [
+      "Joshua Liebow-Feeser"
+    ],
+    "copyrights": [
+      "Copyright 2019 The Fuchsia Authors.",
+      "Copyright 2023 The Fuchsia Authors"
+    ],
+    "notices": []
+  }
+]

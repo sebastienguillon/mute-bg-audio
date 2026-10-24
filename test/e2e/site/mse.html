@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MSE test player</title>
+<script>document.documentElement.dataset.bgmrDebug = '1';</script>
+<style>body { font: 14px system-ui; margin: 16px; } video { width: 640px; background: #000; } #preview { width: 240px; }</style>
+</head>
+<body>
+<!--
+  Mimics YouTube's player: separate audio and video SourceBuffers fed progressively ahead of the
+  playhead, in a #movie_player container. Parameters:
+    ?ahead=<s>       seconds appended ahead of the playhead (default 20)
+    ?chunk=<bytes>   append size (default 48 KiB)
+    ?media=<name>    /media/e2e/<name>-video.webm and <name>-audio.webm (test/e2e/media.mjs) instead of
+                     the 30 s clip: long (90 s), gap (digital-silence gaps, with ?audio=mp4)
+    ?audio=mp4       the audio is AAC in fragmented MP4 (<name>-audio.mp4), like YouTube's itag 140
+    ?autoplay=1      the page starts playback itself; with ?muted=1 muted (like YouTube's previews)
+    ?preview=1       adds a muted, looping inline preview (progressive video) outside #movie_player
+-->
+<div id="movie_player"><video class="html5-main-video" playsinline></video></div>
+<pre id="log"></pre>
+<script>
+const params = new URLSearchParams(location.search);
+const AHEAD = Number(params.get('ahead') ?? 20);
+const CHUNK = Number(params.get('chunk') ?? 48 * 1024);
+const NAME = params.get('media');
+const MP4 = params.get('audio') === 'mp4';
+const MEDIA = NAME
+  ? { video: `/media/e2e/${NAME}-video.webm`, audio: `/media/e2e/${NAME}-audio.${MP4 ? 'mp4' : 'webm'}` }
+  : { video: '/media/video-only.webm', audio: '/media/audio-only.webm' };
+const AUDIO_TYPE = MP4 ? 'audio/mp4; codecs="mp4a.40.2"' : 'audio/webm; codecs="opus"';
+const video = document.querySelector('video');
+const log = (...a) => { document.getElementById('log').textContent += a.join(' ') + '\n'; };
+window.player = { ready: false };
+if (params.get('muted') === '1') video.muted = true;
+
+if (params.get('preview') === '1') {
+  const preview = document.createElement('video');
+  preview.id = 'preview';
+  preview.muted = true;
+  preview.loop = true;
+  preview.autoplay = true;
+  preview.playsInline = true;
+  preview.src = '/media/video.webm';
+  document.body.append(preview);
+}
+
+async function bytes(url) { return new Uint8Array(await (await fetch(url)).arrayBuffer()); }
+
+function feeder(sb, data) {
+  let pos = 0;
+  const step = () => {
+    if (pos >= data.length || sb.updating) return false;
+    const b = sb.buffered;
+    const end = b.length ? b.end(b.length - 1) : 0;
+    if (pos > 0 && end - video.currentTime > AHEAD) return false;
+    sb.appendBuffer(data.subarray(pos, Math.min(data.length, pos + CHUNK)));
+    pos += CHUNK;
+    return true;
+  };
+  return { step, done: () => pos >= data.length };
+}
+
+const ms = new MediaSource();
+video.src = URL.createObjectURL(ms);
+ms.addEventListener('sourceopen', async () => {
+  const [v, a] = await Promise.all([bytes(MEDIA.video), bytes(MEDIA.audio)]);
+  const vsb = ms.addSourceBuffer('video/webm; codecs="vp9"');
+  const asb = ms.addSourceBuffer(AUDIO_TYPE);
+  const fv = feeder(vsb, v), fa = feeder(asb, a);
+  const pump = () => {
+    fv.step(); fa.step();
+    if (fv.done() && fa.done() && !vsb.updating && !asb.updating && ms.readyState === 'open') { ms.endOfStream(); return; }
+    setTimeout(pump, 100);
+  };
+  pump();
+  window.player.ready = true;
+  if (params.get('autoplay') === '1') video.play().catch((e) => log('autoplay failed:', e));
+  log('sourceopen');
+});
+</script>
+</body>
+</html>

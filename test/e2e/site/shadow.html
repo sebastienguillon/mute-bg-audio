@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shadow DOM test page</title>
+<script>document.documentElement.dataset.bgmrDebug = '1';</script>
+</head>
+<body>
+<!--
+  A light-DOM video (#light) and web-component-like players added later, each a <div class="player">
+  with an open shadow root holding a video (/media/video.webm?player=<name>):
+    players.add(name)           adds a player and plays it from script
+    players.add(name, true)     adds a player with a play button inside its shadow root
+    players.video(name)         the player's video element
+-->
+<video id="light" playsinline style="width:480px" src="/media/video.webm?player=light"></video>
+<script>
+const videos = {};
+window.players = {
+  add(name, button = false) {
+    const host = document.createElement('div');
+    host.className = 'player';
+    host.id = name;
+    document.body.append(host);
+    const root = host.attachShadow({ mode: 'open' });
+    const video = videos[name] = document.createElement('video');
+    video.playsInline = true;
+    video.style.width = '480px';
+    video.src = `/media/video.webm?player=${name}`;
+    root.append(video);
+    if (button) {
+      const play = document.createElement('button');
+      play.textContent = 'Play';
+      play.addEventListener('click', () => video.play());
+      root.append(play);
+    } else {
+      return video.play();
+    }
+  },
+  video: (name) => videos[name],
+};
+</script>
+</body>
+</html>
