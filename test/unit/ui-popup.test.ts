@@ -62,6 +62,29 @@ describe('popup', () => {
     await expect.poll(() => text(p, 'status-headline')).toBe('Off on this tab');
     expect((await calls(p, 'tabs.sendMessage')).map((c) => c.args)).toEqual([[7, { type: 'tab-command', command: 'disable' }]]);
     expect(await p.getByRole('switch', { name: 'Remove music on this tab' }).isChecked()).toBe(false);
+    // Remembered for the tab: it stays off when the page reloads.
+    expect((await calls(p, 'runtime.sendMessage')).map((c) => c.args[0])).toContainEqual({ type: 'set-tab-enabled', tabId: 7, enabled: false });
+  });
+
+  it("remembers the tab's switch before switching the frames on", async () => {
+    const p = await open({ url: YOUTUBE, status: { mode: 'off', site: 'youtube', enabled: false }, contentScript: true });
+    await updateScenario(p, { status: { mode: 'waiting', site: 'youtube', enabled: true } });
+    await p.getByRole('switch', { name: 'Remove music on this tab' }).click();
+    await expect.poll(() => text(p, 'status-headline')).toBe('Waiting for the video to play');
+    const all = await calls(p);
+    const remembered = all.findIndex((c) => c.api === 'runtime.sendMessage' && (c.args[0] as { type: string }).type === 'set-tab-enabled');
+    const command = all.findIndex((c) => c.api === 'tabs.sendMessage');
+    expect(all[remembered]?.args[0]).toEqual({ type: 'set-tab-enabled', tabId: 7, enabled: true });
+    expect(remembered).toBeLessThan(command);
+  });
+
+  it("switches the tab back off when nothing could start on the page", async () => {
+    const p = await open({ url: VIMEO, status: null, commandResult: { status: null, error: "Chrome doesn't allow extensions on this page." } });
+    await p.getByRole('switch', { name: 'Remove music on this tab' }).click();
+    await expect.poll(() => text(p, 'status-detail')).toBe("Chrome doesn't allow extensions on this page.");
+    const switches = (await calls(p, 'runtime.sendMessage')).map((c) => c.args[0] as { type: string; enabled?: boolean }).filter((m) => m.type === 'set-tab-enabled');
+    expect(switches.map((m) => m.enabled)).toEqual([true, false]);
+    expect(await p.getByRole('switch', { name: 'Remove music on this tab' }).isChecked()).toBe(false);
   });
 
   it('asks the top frame first and re-enables the subframes along with it', async () => {
@@ -111,8 +134,10 @@ describe('popup', () => {
     expect(await text(p, 'status-headline')).toBe('Not running on this tab yet');
     await p.getByRole('switch', { name: 'Remove music on this tab' }).click();
     await expect.poll(() => text(p, 'status-detail')).toBe('Reload the page to start.');
-    const sent = (await calls(p, 'runtime.sendMessage')).map((c) => (c.args[0] as { type: string }).type);
-    expect(sent).not.toContain('enable-on-tab');
+    const sent = (await calls(p, 'runtime.sendMessage')).map((c) => c.args[0] as { type: string });
+    expect(sent.map((m) => m.type)).not.toContain('enable-on-tab');
+    // The reloaded page starts on.
+    expect(sent).toContainEqual({ type: 'set-tab-enabled', tabId: 7, enabled: true });
   });
 
   it('starts tab capture for protected media and shows capture errors', async () => {

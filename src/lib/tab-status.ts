@@ -1,5 +1,5 @@
-// Pure helpers shared by the background and the popup: per-tab status aggregation, the action
-// badge, page classification and the human-readable status strings shown in the popup.
+// Pure helpers shared by the background and the popup: per-tab status aggregation, the toolbar
+// icon and badge, page classification and the human-readable status strings shown in the popup.
 import { REMOVE_DB } from './constants';
 import type { TabMode, TabStatus } from './protocol';
 import { REDUCTION_STEPS } from './settings';
@@ -81,9 +81,24 @@ export function stableStatus(status: TabStatus): TabStatus {
   return { ...status, lookahead };
 }
 
-// ───────────── action badge ─────────────
+// ───────────── toolbar action ─────────────
 
-export const BADGE_ON_COLOR = '#16a34a';
+export type ActionIcon = 'on' | 'off';
+
+/**
+ * Toolbar icon images per state (rendered from assets/icon.svg by scripts/make-icons.mjs). 'off'
+ * is also the manifest's default_icon (wxt.config.ts): what a tab shows until it is switched on.
+ */
+export const ACTION_ICON_PATHS: Readonly<Record<ActionIcon, Readonly<Record<number, string>>>> = {
+  on: { 16: '/icon/16.png', 32: '/icon/32.png' },
+  off: { 16: '/icon/off/16.png', 32: '/icon/off/32.png' },
+};
+
+/** The icon is in colour while the extension is on in the tab (whatever it does there), grey otherwise. */
+export function iconFor(status: TabStatus | null): ActionIcon {
+  return status?.enabled ? 'on' : 'off';
+}
+
 export const BADGE_WARNING_COLOR = '#d97706';
 
 export interface Badge {
@@ -92,13 +107,12 @@ export interface Badge {
   color: string;
 }
 
-/** Badge shown on the toolbar action for a tab. */
+/** Badge shown on the toolbar action for a tab: only a warning (the icon shows on and off). */
 export function badgeFor(status: TabStatus | null): Badge {
-  if (status && isProcessing(status.mode)) return { text: 'ON', color: BADGE_ON_COLOR };
-  if (status && (status.needsTabCapture || status.mode === 'unsupported')) {
+  if (status && (status.needsTabCapture || status.mode === 'unsupported') && !isProcessing(status.mode)) {
     return { text: '!', color: BADGE_WARNING_COLOR };
   }
-  return { text: '', color: BADGE_ON_COLOR };
+  return { text: '', color: BADGE_WARNING_COLOR };
 }
 
 export const EXTENSION_NAME = 'Mute BG Audio';
@@ -126,7 +140,7 @@ export function actionTitle(status: TabStatus | null): string {
 // ───────────── pages ─────────────
 
 /**
- * - youtube: the YouTube controller runs automatically.
+ * - youtube: the YouTube controller runs (off until the tab is switched on).
  * - web: http(s) page; the generic script can be injected and the origin can be auto-enabled.
  * - file: local file; injection needs "Allow access to file URLs", no auto-run.
  * - restricted: Chrome does not let extensions script or capture it.

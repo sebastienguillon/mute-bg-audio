@@ -1,6 +1,6 @@
 // Runs the real background service worker (src/entrypoints/background.ts) against WXT's in-memory
 // fake browser, with the APIs it does not implement (tabs.sendMessage, offscreen, tabCapture,
-// scripting, permissions) scripted here. Content scripts are modelled as documents per frame.
+// scripting, permissions, action.setIcon) scripted here. Content scripts are modelled as documents per frame.
 import { vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import type { Browser } from 'wxt/browser';
@@ -21,6 +21,8 @@ export interface BackgroundHarness {
   readonly documents: Map<number, Map<number, string>>;
   /** Messages sent with tabs.sendMessage, in order. */
   readonly tabMessages: TabMessage[];
+  /** The 16 px image of the icon last set per tab with action.setIcon. */
+  readonly icons: Map<number, string>;
   /** Status the capture document answers to 'offscreen-start'. */
   captureStart: TabStatus;
   /** Whether the offscreen (capture) document is open. */
@@ -54,6 +56,7 @@ export async function startBackground(): Promise<BackgroundHarness> {
   const h: BackgroundHarness = {
     documents: new Map(),
     tabMessages: [],
+    icons: new Map(),
     captureStart: { mode: 'tabcapture', site: 'tabcapture', enabled: true, latencyMs: 60 },
     offscreenOpen: false,
     async send(message, sender) {
@@ -102,6 +105,9 @@ export async function startBackground(): Promise<BackgroundHarness> {
     createDocument: vi.fn(async () => void (h.offscreenOpen = true)),
     closeDocument: vi.fn(async () => void (h.offscreenOpen = false)),
   };
+  browser.action!.setIcon = vi.fn(async ({ tabId, path }: { tabId: number; path: Record<number, string> }) => {
+    h.icons.set(tabId, path[16]!);
+  });
   browser.tabCapture = { getMediaStreamId: vi.fn(async () => 'stream-id') };
   browser.scripting = {
     executeScript: vi.fn(async () => []),

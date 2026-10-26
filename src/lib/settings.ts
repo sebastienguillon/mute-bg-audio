@@ -5,8 +5,6 @@ export type Quality = 'auto' | 'realtime';
 export interface Settings {
   /** Master switch. */
   enabled: boolean;
-  /** Start automatically on YouTube pages. */
-  youtubeAuto: boolean;
   /** Music reduction in dB; REMOVE_DB (60) or more means "remove completely". */
   reductionDb: number;
   /** Lower the residual further while nobody is speaking. */
@@ -19,7 +17,6 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
-  youtubeAuto: true,
   reductionDb: 18,
   gapReduction: true,
   quality: 'auto',
@@ -41,7 +38,6 @@ export function normalizeSettings(raw: unknown): Settings {
   const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
   return {
     enabled: typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_SETTINGS.enabled,
-    youtubeAuto: typeof r.youtubeAuto === 'boolean' ? r.youtubeAuto : DEFAULT_SETTINGS.youtubeAuto,
     reductionDb: Math.min(REMOVE_DB, Math.max(0, num(r.reductionDb, DEFAULT_SETTINGS.reductionDb))),
     gapReduction: typeof r.gapReduction === 'boolean' ? r.gapReduction : DEFAULT_SETTINGS.gapReduction,
     quality: r.quality === 'realtime' ? 'realtime' : 'auto',

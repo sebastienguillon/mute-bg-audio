@@ -31,9 +31,11 @@ processing runs on your computer: no audio, video IDs or browsing data leave the
   hides model artifacts. *Extra reduction between sentences* lowers the music further while
   nobody speaks.
 
-It starts by itself on youtube.com, www.youtube.com and m.youtube.com, and in YouTube players
-embedded in other sites (also from youtube-nocookie.com). Elsewhere, including YouTube Music,
-Studio and TV, switch it on from the popup, or tick *Always run on* for a site.
+Every tab starts off. Switch it on from the popup (*Remove music on this tab*), also in the
+middle of a video. On YouTube the tab then stays on through reloads and while you browse in it,
+until you switch it off or close it, and so do YouTube players embedded in other sites. Other
+videos are switched off again by a reload, unless you tick *Always run on* for the site. The
+toolbar icon is in colour in a tab where it is on and greyed out elsewhere.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the components, message flow and timing.
 

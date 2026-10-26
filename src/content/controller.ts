@@ -25,6 +25,7 @@ import type {
   PlayheadInfo,
   RuntimeMessage,
   TabMode,
+  TabState,
   TabStatus,
   ToMixer,
 } from '@/lib/protocol';
@@ -41,7 +42,6 @@ import {
   isAudible,
   isMainPlayer,
   isPlayingNormally,
-  isYouTubeAutoStartHost,
   playerFrameHost,
   urlVerdict,
   wantsProcessing,
@@ -196,8 +196,8 @@ export class MediaController implements DebugTarget {
   private readonly t: ControllerTiming;
   private settings: Settings = DEFAULT_SETTINGS;
   private settingsLoaded = false;
-  /** Per-tab override from the popup; null follows the settings. */
-  private tabOverride: boolean | null = null;
+  /** The tab's switch (popup); null while the user has not set it for this tab. */
+  private tabSwitch: boolean | null = null;
   /** Tab capture processes this tab: in-page processing stands down. */
   private captureActive = false;
   private dead = false;
@@ -320,7 +320,7 @@ export class MediaController implements DebugTarget {
     window.addEventListener('pageshow', (e) => e.persisted && this.publish(true), { signal });
     navigator.mediaDevices?.addEventListener('devicechange', () => this.refreshOutputLatency(), { signal });
     if (import.meta.env.MODE !== 'production') installDebugBridge(this);
-    const [settings, capture] = await Promise.all([
+    const [settings, tab] = await Promise.all([
       Promise.resolve()
         .then(() => browser.storage.local.get('settings'))
         .then((stored) => normalizeSettings(stored.settings))
@@ -328,25 +328,30 @@ export class MediaController implements DebugTarget {
           if (isContextInvalidated(e)) this.shutdown();
           return DEFAULT_SETTINGS;
         }),
-      this.runtime<{ active?: unknown } | undefined>({ type: 'get-capture-state' }).catch(() => undefined),
+      this.runtime<Partial<TabState> | undefined>({ type: 'get-tab-state' }).catch(() => undefined),
     ]);
     if (this.dead) return;
     this.settings = settings;
-    this.captureActive = capture?.active === true;
+    this.captureActive = tab?.capture === true;
+    // A command from the popup that arrived meanwhile is newer.
+    if (typeof tab?.enabled === 'boolean') this.tabSwitch ??= tab.enabled;
     this.settingsLoaded = true;
     this.reconfigure(true);
   }
 
-  /** Effective on/off state for this tab (what the user chose). */
+  /**
+   * Effective on/off state for this tab (what the user chose). A tab starts off: the YouTube
+   * script runs on every YouTube page but waits for the tab's switch, while the generic script
+   * only runs where the user turned it on or chose to always run.
+   */
   get enabled(): boolean {
     if (!this.settings.enabled) return false;
-    if (this.tabOverride !== null) return this.tabOverride;
-    return this.site === 'youtube' ? this.settings.youtubeAuto && isYouTubeAutoStartHost(location.hostname) : true;
+    return this.tabSwitch ?? this.site === 'generic';
   }
 
   setTabEnabled(on: boolean): void {
     if (this.dead) return;
-    this.tabOverride = on;
+    this.tabSwitch = on;
     this.reconfigure(true);
   }
 

@@ -93,19 +93,48 @@ export const test = base.extend<Fixtures>({
       }, s);
     });
   },
-  extensionMessage: async ({ context, background }, use) => {
-    let page: Page | null = null;
-    await use(async (msg) => {
-      if (!page) {
-        page = await context.newPage();
-        await page.goto(`chrome-extension://${new URL(background.url()).host}/popup.html`);
-      }
-      return page.evaluate((m) => (globalThis as any).chrome.runtime.sendMessage(m), msg);
-    });
+  extensionMessage: async ({ context }, use) => {
+    await use((msg) => sendFromExtensionPage(context, msg));
   },
 });
 
 export const expect = test.expect;
+
+const extensionPages = new WeakMap<BrowserContext, Promise<Page>>();
+
+/**
+ * Sends a runtime message from an extension page (popup.html in a tab of its own, opened once per
+ * context), as the popup does: the background does not receive the messages it sends itself.
+ */
+export async function sendFromExtensionPage(context: BrowserContext, msg: Record<string, unknown>): Promise<any> {
+  let page = extensionPages.get(context);
+  if (!page) {
+    page = (async () => {
+      const sw = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+      const p = await context.newPage();
+      await p.goto(`chrome-extension://${new URL(sw.url()).host}/popup.html`);
+      return p;
+    })();
+    extensionPages.set(context, page);
+  }
+  return (await page).evaluate((m) => (globalThis as any).chrome.runtime.sendMessage(m), msg);
+}
+
+/**
+ * Switches the page's tab on, as the popup's "Remove music on this tab" does: the background
+ * remembers it for the tab (pages it loads next start on), then every frame of the tab is
+ * switched on. Every tab starts off.
+ */
+export async function switchOn(page: Page): Promise<void> {
+  const context = page.context();
+  const background = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+  const tabId = await tabIdOf(background, page.url());
+  expect(await sendFromExtensionPage(context, { type: 'set-tab-enabled', tabId, enabled: true })).toEqual({ ok: true });
+  await background.evaluate(
+    (id) => (globalThis as any).chrome.tabs.sendMessage(id, { type: 'tab-command', command: 'enable' }).catch(() => undefined),
+    tabId,
+  );
+}
 
 /** What the page controller's debug bridge reports (src/content/controller.ts debugSnapshot). */
 export interface DebugSnapshot {
@@ -239,14 +268,6 @@ export async function tabIdOf(background: Worker, url: string): Promise<number> 
   );
   if (id === undefined) throw new Error(`no tab with ${url}`);
   return id;
-}
-
-/** Sends a runtime message from the background to the content scripts of a tab (as the popup's commands arrive). */
-export async function sendToTab(background: Worker, tabId: number, msg: Record<string, unknown>, frameId = 0): Promise<any> {
-  return background.evaluate(
-    ({ tabId, msg, frameId }) => (globalThis as any).chrome.tabs.sendMessage(tabId, msg, { frameId }),
-    { tabId, msg, frameId },
-  );
 }
 
 /** Where a routed element's audio goes, as traced in the extension's world. */

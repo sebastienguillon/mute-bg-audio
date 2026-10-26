@@ -271,12 +271,3 @@ export function playerFrameHost(doc: Document = document): string | null {
 export function isYouTubeHost(hostname: string): boolean {
   return /(^|\.)(youtube|youtube-nocookie)\.com$/.test(hostname);
 }
-
-/**
- * YouTube hosts where the controller starts by itself (settings.youtubeAuto): the main site,
- * the mobile site and privacy-enhanced embeds. Elsewhere (music., studio., tv.youtube.com) the
- * music is part of the content; the popup's per-tab switch can still turn it on.
- */
-export function isYouTubeAutoStartHost(hostname: string): boolean {
-  return /^((www|m)\.)?youtube\.com$/.test(hostname) || /(^|\.)youtube-nocookie\.com$/.test(hostname);
-}

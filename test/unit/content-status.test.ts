@@ -1,6 +1,6 @@
 // Pure parts of the page controller: status change keys, mixer mode mapping and host rules.
 import { describe, expect, it } from 'vitest';
-import { isYouTubeAutoStartHost, isYouTubeHost } from '../../src/content/media';
+import { isYouTubeHost } from '../../src/content/media';
 import { mixerStatus, statusKey } from '../../src/content/status';
 import type { MixerStats, TabStatus } from '../../src/lib/protocol';
 
@@ -67,15 +67,6 @@ describe('mixerStatus', () => {
 });
 
 describe('YouTube hosts', () => {
-  it('starts automatically only on the main, mobile and nocookie hosts', () => {
-    for (const host of ['www.youtube.com', 'm.youtube.com', 'youtube.com', 'www.youtube-nocookie.com', 'youtube-nocookie.com']) {
-      expect(isYouTubeAutoStartHost(host), host).toBe(true);
-    }
-    for (const host of ['music.youtube.com', 'studio.youtube.com', 'tv.youtube.com', 'kids.youtube.com', 'gaming.youtube.com', 'notyoutube.com', 'youtube.com.evil.test']) {
-      expect(isYouTubeAutoStartHost(host), host).toBe(false);
-    }
-  });
-
   it('recognises every host the YouTube content scripts run on', () => {
     for (const host of ['www.youtube.com', 'music.youtube.com', 'studio.youtube.com', 'youtube.com', 'www.youtube-nocookie.com']) {
       expect(isYouTubeHost(host), host).toBe(true);

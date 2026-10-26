@@ -11,6 +11,7 @@ import {
   playbackAdvances,
   record,
   startPlayback,
+  switchOn,
   test,
   waitForMediaTime,
   waitForMode,
@@ -46,6 +47,7 @@ test.describe('YouTube-like MSE player', () => {
     const page = await context.newPage();
     const world = await ExtensionWorld.attach(page);
     await page.goto(`${YT}/mse.html`);
+    await switchOn(page);
     const t0 = Date.now();
     await startPlayback(page);
     const st = await waitForMode(page, ['lookahead'], 90_000);
@@ -64,6 +66,7 @@ test.describe('YouTube-like MSE player', () => {
     await setSettings({ reductionDb: 60, quality: 'realtime', gapReduction: false });
     const page = await context.newPage();
     await page.goto(`${YT}/mse.html`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForMode(page, ['realtime'], 60_000);
     await page.waitForTimeout(1000);
@@ -83,6 +86,7 @@ test.describe('YouTube-like MSE player', () => {
     const page = await context.newPage();
     const world = await ExtensionWorld.attach(page);
     await page.goto(`${YT}/mse.html`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForStatus(page, (s) => s.mixer?.mode === 'lookahead' && s.mixer.locked, 'look-ahead lock', 90_000);
     await world.waitForSinkLatency();
@@ -108,6 +112,7 @@ test.describe('YouTube-like MSE player', () => {
       await setSettings({ reductionDb: 12, quality, gapReduction: false });
       const page = await context.newPage();
       await page.goto(`${YT}/mse.html`);
+      await switchOn(page);
       await startPlayback(page);
       await waitForMode(page, [quality === 'auto' ? 'lookahead' : 'realtime'], 90_000);
       await page.waitForTimeout(500);
@@ -128,6 +133,7 @@ test.describe('YouTube-like MSE player', () => {
     await setSettings({ reductionDb: 12, quality: 'auto', gapReduction: false });
     const page = await context.newPage();
     await page.goto(`${YT}/mse.html?ahead=40`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForMode(page, ['lookahead'], 90_000);
     await page.evaluate(() => { document.querySelector('video')!.currentTime = 3; });
@@ -145,6 +151,7 @@ test.describe('YouTube-like MSE player', () => {
     const page = await context.newPage();
     const world = await ExtensionWorld.attach(page);
     await page.goto(`${YT}/mse.html`);
+    await switchOn(page);
     await world.traceAudioGraph();
     await startPlayback(page);
     await waitForMode(page, ['realtime', 'lookahead'], 60_000);
@@ -167,6 +174,7 @@ test.describe('YouTube-like MSE player', () => {
     await setSettings({ reductionDb: 60, quality: 'realtime' });
     const page = await context.newPage();
     await page.goto(`${YT}/mse.html`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForMode(page, ['realtime', 'lookahead'], 60_000);
     await page.waitForTimeout(500);
@@ -185,6 +193,7 @@ test.describe('YouTube-like MSE player', () => {
       await setSettings({ reductionDb: 60, quality });
       const page = await context.newPage();
       await page.goto(`${YT}/mse.html`);
+      await switchOn(page);
       await startPlayback(page);
       const mode = quality === 'auto' ? 'lookahead' : 'realtime';
       await waitForMode(page, [mode], 90_000);
@@ -215,6 +224,7 @@ test.describe('YouTube-like MSE player', () => {
    */
   async function seekFarBack(page: Page): Promise<number> {
     await page.goto(`${YT}/mse.html?media=long&ahead=45`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForMode(page, ['lookahead'], 90_000);
     let processedEnd = 0;
@@ -283,6 +293,7 @@ test.describe('YouTube-like MSE player', () => {
     await setSettings({ reductionDb: 60, quality: 'auto' });
     const page = await context.newPage();
     await page.goto(`${YT}/mse.html?ahead=40`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForMode(page, ['lookahead'], 90_000);
     // One session processes the whole clip, then the end is played within it (no restart): the
@@ -336,6 +347,7 @@ test.describe('look-ahead through silence, pauses and speed changes', () => {
     const page = await context.newPage();
     const world = await ExtensionWorld.attach(page);
     await page.goto(`${YT}/mse.html?media=gap&audio=mp4`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForStatus(page, (s) => s.mixer?.mode === 'lookahead' && s.mixer.locked, 'look-ahead lock', 90_000);
     const sink = await world.waitForSinkLatency();
@@ -397,6 +409,7 @@ test.describe('look-ahead through silence, pauses and speed changes', () => {
     const page = await context.newPage();
     const world = await ExtensionWorld.attach(page);
     await page.goto(`${YT}/mse.html`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForStatus(page, (s) => s.mixer?.mode === 'lookahead' && s.mixer.locked, 'look-ahead lock', 90_000);
     const sink = await world.waitForSinkLatency();
@@ -475,6 +488,7 @@ test.describe('look-ahead through silence, pauses and speed changes', () => {
     await setSettings({ reductionDb: 60, quality: 'auto', gapReduction: false });
     const page = await context.newPage();
     await page.goto(`${YT}/mse.html?media=long&ahead=40`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForStatus(page, (s) => s.mixer?.mode === 'lookahead' && s.mixer.locked, 'look-ahead lock', 90_000);
     await page.evaluate(() => { document.querySelector('video')!.playbackRate = 2; });
@@ -513,6 +527,7 @@ test.describe('look-ahead through silence, pauses and speed changes', () => {
     const page = await context.newPage();
     // Everything is appended long before the switch back.
     await page.goto(`${YT}/mse.html?media=long&ahead=45`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForStatus(page, (s) => s.mixer?.mode === 'lookahead' && s.mixer.locked, 'look-ahead lock', 90_000);
     await setSettings({ quality: 'realtime' });

@@ -216,7 +216,7 @@ run out before each run ends.
 | `src/lib/constants.ts` | Shared numeric constants |
 | `src/lib/settings.ts` | Settings schema, defaults, storage helpers |
 | `src/lib/protocol.ts` | All cross-context message types |
-| `src/lib/tab-status.ts` | Status aggregation over frames, badge, page classification, popup strings |
+| `src/lib/tab-status.ts` | Status aggregation over frames, toolbar icon and badge, page classification, popup strings |
 | `src/lib/dsp/fft.ts` | Mixed-radix complex FFT (radix 2/3/4/5 + generic), real FFT helpers |
 | `src/lib/dsp/stft.ts` | `torch.stft`/`torch.istft`-compatible STFT (center, reflect pad, periodic Hann or rectangular window, optionally normalized) |
 | `src/lib/dsp/resample.ts` | Windowed-sinc resampler (48 kHz ↔ 44.1 kHz), zero-phase, block API with margins |
@@ -251,19 +251,21 @@ run out before each run ends.
 | `src/entrypoints/youtube.content.ts`, `generic.content.ts` | Content scripts starting the controller |
 | `src/entrypoints/engine/` | Engine iframe: `main.ts` (connect gate, workers), `realtime.worker.ts`, `lookahead.worker.ts` |
 | `src/entrypoints/worklet.ts` | AudioWorkletProcessor around MixerCore |
-| `src/entrypoints/background.ts` | Service worker: tab status and badge, generic script injection, auto sites, tab capture, engine tokens |
+| `src/entrypoints/background.ts` | Service worker: tab status, switches, icon and badge, generic script injection, auto sites, tab capture, engine tokens |
 | `src/entrypoints/popup/`, `offscreen/` | Toolbar popup; tab-capture document |
 | `scripts/` | `fetch-models.mjs` + `models.mjs` (model download, hashes, the build of each look-ahead model), `with-model.mjs` (runs a command with `LOOKAHEAD_MODEL` set, in any shell), `make-test-media.mjs`, `make-notices.mjs` + `notices.mjs` (third-party notices of each build), `build-dfn-wasm.sh`, `bench-mdx.mjs`, `make-icons.mjs` |
 | `vendor/scnet/` | SCNet license, provenance and the scripts that make `public/models/scnet_vocals.onnx` |
 
 ## Pages, tabs and the background
 
-* **Where it runs.** The YouTube scripts (`*.youtube.com`, `*.youtube-nocookie.com`, all frames)
-  start processing by themselves only on `youtube.com`, `www.youtube.com`, `m.youtube.com` and
-  `youtube-nocookie.com` (embeds included); on other YouTube hosts (Music, Studio, TV) they wait
-  for the popup. Elsewhere the popup injects `generic.js` into every frame Chrome lets it access
-  (`enable-on-tab`, `scripting.executeScript` with `allFrames`), or registers it for the sites
-  chosen under *Always run on*. A frame that already runs the YouTube controller gets no second
+* **Where it runs.** Every tab starts off. The YouTube scripts (`*.youtube.com`,
+  `*.youtube-nocookie.com`, all frames) run on every YouTube page but route nothing until the
+  tab is switched on; the MAIN-world hook keeps what the player buffers meanwhile, so switching
+  on in the middle of a video still gets look-ahead. Elsewhere the popup injects `generic.js`
+  into every frame Chrome lets it access (`enable-on-tab`, `scripting.executeScript` with
+  `allFrames`; when the page itself refuses it, the frames that run a script of their own,
+  YouTube embeds, still get the command), or registers it for the sites chosen under *Always
+  run on*, where it starts on. A frame that already runs the YouTube controller gets no second
   controller. The popup asks the top frame first (`tab-command` with `frameId: 0`), so a YouTube
   embed answering does not hide that the page itself needs the generic script; *disable* goes to
   every frame. Media in a cross-origin frame that cannot be scripted is reported as
@@ -272,9 +274,22 @@ run out before each run ends.
   cross-origin or protected, or it only delivers silence) is `unsupported` without
   `needsTabCapture`: the tab plays that silence, so capture would record it too, and the popup
   offers no capture; the detail asks for a reload.
+* **The tab's switch.** Before its commands, the popup tells the background (`set-tab-enabled`),
+  which keeps the switch per tab in `storage.session` until the tab closes. Controllers ask for it
+  when they start (`get-tab-state`, reply `{ capture, enabled }`; `enabled` is null in a tab the
+  user never switched). Where a controller starts by itself (YouTube pages and embeds, *Always run
+  on* sites), a reload, a page the tab navigates to or a frame added later therefore starts the way
+  the user left the tab: a generic script on an *Always run on* site starts on unless the tab was
+  switched off, the YouTube scripts start off unless it was switched on. On other sites the popup
+  injected the generic script once; nothing injects it again after a reload, so the frames that ran
+  it stay off until the tab is switched on again (YouTube embeds there start as above). When nothing
+  could start, the popup sets the switch back off, as its toggle shows.
 * **Status.** Every controller reports `tab-status` when its status changes (look-ahead progress
   is rounded for this) and every 30 s while not off. The background keeps the latest status per
-  frame, aggregates them (`aggregateTabStatus`), sets the badge and answers the popup's
+  frame, aggregates them (`aggregateTabStatus`), sets the toolbar icon (in colour while the
+  aggregate is enabled, the manifest's greyed-out `default_icon` otherwise; both are rendered
+  from `assets/icon.svg` by `scripts/make-icons.mjs`), a "!" badge when the media needs tab
+  capture or cannot be processed, and the tooltip, and answers the popup's
   `get-tab-status` (polled every second). State lives in `storage.session`, written only when the
   status changes beyond the look-ahead progress. A report from a new top-frame document drops
   the subframe statuses of the previous one; the top frame's first report keeps them (embeds
@@ -284,8 +299,8 @@ run out before each run ends.
   `getUserMedia`), runs the same worklet with DeepFilterNet and plays the result. The background
   sends `{ type: 'capture-state', active }` to all frames of the tab when a session starts and
   ends; the controllers then behave as switched off (direct path) and report `off` with "Tab
-  capture is processing this tab." Scripts that start later ask `get-capture-state` (reply
-  `{ active }`, also right after a service-worker restart).
+  capture is processing this tab." Scripts that start later learn it from `get-tab-state` (also
+  right after a service-worker restart).
 
 ## Security and builds
 

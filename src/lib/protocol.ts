@@ -234,6 +234,11 @@ export type RuntimeMessage =
   | { type: 'tab-status'; status: TabStatus }
   | { type: 'get-tab-status'; tabId: number }
   | { type: 'tab-command'; command: 'enable' | 'disable' }
+  /**
+   * Popup → background: the user switched the tab on or off. Reply { ok: true } once stored; the
+   * frames and pages the tab loads afterwards start that way (see TabState.enabled).
+   */
+  | { type: 'set-tab-enabled'; tabId: number; enabled: boolean }
   | { type: 'enable-on-tab'; tabId: number }
   | { type: 'start-tab-capture'; tabId: number }
   | { type: 'stop-tab-capture'; tabId: number }
@@ -243,9 +248,17 @@ export type RuntimeMessage =
   | { type: 'offscreen-status'; tabId: number; status: TabStatus }
   /** Background → all frames of a tab: tab capture started/stopped (in-page processing stands down). */
   | { type: 'capture-state'; active: boolean }
-  /** Content script → background; reply { active: boolean } for the sender's tab. */
-  | { type: 'get-capture-state' }
+  /** Content script → background; reply TabState for the sender's tab. */
+  | { type: 'get-tab-state' }
   /** Content script → background: one-time token the engine iframe will present (see engine-verify). */
   | { type: 'engine-token'; token: string }
   /** Engine iframe → background; reply { ok: boolean }: the token was issued for the same tab. Consumes it. */
   | { type: 'engine-verify'; token: string };
+
+/** Reply of the background to 'get-tab-state'. */
+export interface TabState {
+  /** A tab-capture session processes the tab: in-page processing stands down. */
+  capture: boolean;
+  /** The tab's switch as the user last set it in the popup; null until then (a new tab). */
+  enabled: boolean | null;
+}

@@ -42,7 +42,9 @@ export default defineConfig({
         matches: ['<all_urls>'],
       },
     ],
-    action: { default_title: 'Mute BG Audio' },
+    // Every tab starts off: the toolbar shows the greyed-out icon until a tab is switched on (the
+    // background then sets that tab's icon; ACTION_ICON_PATHS in src/lib/tab-status.ts).
+    action: { default_title: 'Mute BG Audio', default_icon: { 16: 'icon/off/16.png', 32: 'icon/off/32.png' } },
   },
   // `pnpm dev` only (builds use neither): the extension pages load their scripts and styles from
   // the dev server. Scripts are CORS requests, but stylesheets are not, so under the pages' COEP

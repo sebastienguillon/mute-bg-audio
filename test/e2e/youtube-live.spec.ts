@@ -3,7 +3,7 @@
 //   LIVE_YOUTUBE=1 LOOKAHEAD_MODEL=scnet pnpm exec playwright test youtube-live   (the SCNet e2e build)
 // Optional: YT_VIDEO=<id> (default: Kurzgesagt "The Egg", narration over music).
 import { chromium, expect, test } from '@playwright/test';
-import { extensionPath, ExtensionWorld, lookahead, record } from './fixtures';
+import { extensionPath, ExtensionWorld, lookahead, record, switchOn } from './fixtures';
 import { alignedDifference, outputLead, rms } from './audio';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -37,6 +37,8 @@ test('processes a real YouTube video', async () => {
       await page.waitForTimeout(700);
     }
     await page.waitForTimeout(1500);
+    // Every tab starts off: switch this one on, as the popup does.
+    await switchOn(page);
     await page.evaluate(() => document.querySelector('video')?.play().catch(() => {}));
     let status: any = null;
     for (let i = 0; i < 90; i++) {

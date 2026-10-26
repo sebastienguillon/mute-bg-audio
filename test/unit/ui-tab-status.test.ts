@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { TabMode, TabStatus } from '../../src/lib/protocol';
 import { REDUCTION_STEPS } from '../../src/lib/settings';
 import {
+  ACTION_ICON_PATHS,
   actionTitle,
   aggregateTabStatus,
-  BADGE_ON_COLOR,
   BADGE_WARNING_COLOR,
   badgeFor,
   canOfferTabCapture,
   classifyPage,
   describeStatus,
+  iconFor,
   isCapturing,
   MODE_PRIORITY,
   stableStatus,
@@ -113,23 +114,43 @@ describe('stableStatus', () => {
   });
 });
 
-describe('badgeFor', () => {
-  it('shows ON in green while processing', () => {
-    for (const mode of ['realtime', 'lookahead', 'tabcapture'] as const) {
-      expect(badgeFor(st(mode))).toEqual({ text: 'ON', color: BADGE_ON_COLOR });
+describe('iconFor', () => {
+  it('is on whenever the extension is on in the tab, whatever it does there', () => {
+    for (const mode of ['waiting', 'starting', 'realtime', 'lookahead', 'tabcapture', 'passthrough', 'unsupported'] as const) {
+      expect(iconFor(st(mode)), mode).toBe('on');
     }
-    expect(BADGE_ON_COLOR).toBe('#16a34a');
+    // Tab capture runs while the in-page script stands down: the aggregate is the capture's status.
+    expect(iconFor(aggregateTabStatus(frames([0, st('off', { enabled: true })]), st('tabcapture', { site: 'tabcapture' })))).toBe('on');
   });
 
+  it('is off for a tab that was not switched on, or without any script', () => {
+    expect(iconFor(st('off'))).toBe('off');
+    // The master switch makes every frame report enabled: false.
+    expect(iconFor(st('waiting', { enabled: false }))).toBe('off');
+    expect(iconFor(null)).toBe('off');
+  });
+
+  it('has an image per toolbar size and state', () => {
+    expect(ACTION_ICON_PATHS).toEqual({
+      on: { 16: '/icon/16.png', 32: '/icon/32.png' },
+      off: { 16: '/icon/off/16.png', 32: '/icon/off/32.png' },
+    });
+  });
+});
+
+describe('badgeFor', () => {
   it('shows an amber "!" when tab capture is needed or the media is unsupported', () => {
     expect(badgeFor(st('unsupported'))).toEqual({ text: '!', color: BADGE_WARNING_COLOR });
     expect(badgeFor(st('waiting', { needsTabCapture: true }))).toEqual({ text: '!', color: BADGE_WARNING_COLOR });
+    expect(BADGE_WARNING_COLOR).toBe('#d97706');
     // Processing wins over the warning.
-    expect(badgeFor(st('realtime', { needsTabCapture: true })).text).toBe('ON');
+    expect(badgeFor(st('realtime', { needsTabCapture: true })).text).toBe('');
   });
 
-  it('is empty otherwise', () => {
-    for (const mode of ['off', 'waiting', 'starting', 'passthrough'] as const) expect(badgeFor(st(mode)).text).toBe('');
+  it('is empty otherwise: the icon shows on and off', () => {
+    for (const mode of ['off', 'waiting', 'starting', 'passthrough', 'realtime', 'lookahead', 'tabcapture'] as const) {
+      expect(badgeFor(st(mode)).text).toBe('');
+    }
     expect(badgeFor(null).text).toBe('');
   });
 });

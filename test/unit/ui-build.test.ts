@@ -116,6 +116,15 @@ describe.each(['kim', 'scnet'] as const)('the %s build', (model) => {
   });
 });
 
+it('starts every tab with the off icon, and has the images of both toolbar icons', async () => {
+  const { ACTION_ICON_PATHS } = await import('../../src/lib/tab-status');
+  const manifest = (await configFor('kim')).manifest as { action: { default_icon: Record<number, string> } };
+  expect(Object.fromEntries(Object.entries(manifest.action.default_icon).map(([size, path]) => [size, `/${path}`]))).toEqual(ACTION_ICON_PATHS.off);
+  for (const path of Object.values(ACTION_ICON_PATHS).flatMap((paths) => Object.values(paths))) {
+    expect(existsSync(join(ROOT, 'public', path)), path).toBe(true);
+  }
+});
+
 it('LOOKAHEAD_MODEL must name a build', async () => {
   await expect(configFor('mdx' as 'kim')).rejects.toThrow('LOOKAHEAD_MODEL must be kim or scnet, not "mdx".');
 });

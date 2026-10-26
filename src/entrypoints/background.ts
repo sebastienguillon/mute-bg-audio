@@ -1,17 +1,20 @@
 // Background service worker: aggregates the per-tab status reported by content scripts and the
-// tab-capture document, drives the action badge, injects the generic content script on demand,
+// tab-capture document, drives the action icon and badge, remembers each tab's on/off switch (a
+// tab starts off; the popup switches it), injects the generic content script on demand,
 // keeps the "always run on this site" registration in sync, runs tab capture sessions (telling the
 // tab's content scripts to stand down meanwhile) and issues the one-time tokens with which an
 // engine iframe recognises the content script that created it.
 //
-// MV3 service workers are stopped when idle, so per-tab state and outstanding engine tokens live in
+// MV3 service workers are stopped when idle, so per-tab state, switches and engine tokens live in
 // chrome.storage.session (one key each) and are restored on start-up before any event is handled.
-import type { RuntimeMessage, TabStatus } from '@/lib/protocol';
+import type { RuntimeMessage, TabState, TabStatus } from '@/lib/protocol';
 import { normalizeSettings, type Settings } from '@/lib/settings';
 import {
+  ACTION_ICON_PATHS,
   actionTitle,
   aggregateTabStatus,
   badgeFor,
+  iconFor,
   originMatchPattern,
   stableStatus,
   type CommandResult,
@@ -23,6 +26,7 @@ const AUTO_SCRIPT_ID = 'generic-auto';
 const OFFSCREEN_PATH = 'offscreen.html';
 const ENGINE_PATH = '/engine.html';
 const TAB_KEY_PREFIX = 'tab:';
+const SWITCH_KEY_PREFIX = 'switch:';
 const TOKEN_KEY_PREFIX = 'engine-token:';
 const NO_RECEIVER = 'Receiving end does not exist';
 /** An engine token is presented right after the engine iframe loads; it is not valid for longer. */
@@ -61,7 +65,9 @@ interface EngineToken {
 
 export default defineBackground(() => {
   const tabs = new Map<number, TabRecord>();
-  /** Last badge/title applied per tab, to skip redundant action updates. */
+  /** The on/off switch of each tab the user set it for in the popup (the others are off). */
+  const switches = new Map<number, boolean>();
+  /** Last icon/badge/title applied per tab, to skip redundant action updates. */
   const appliedBadges = new Map<number, string>();
   /** persistedKey() of what storage.session holds per tab, to skip writes that change nothing. */
   const persisted = new Map<number, string>();
@@ -85,6 +91,9 @@ export default defineBackground(() => {
           const tab = value as StoredTab;
           tabs.set(tabId, { frames: new Map(tab.frames), capture: tab.capture });
           persisted.set(tabId, persistedKey(tab));
+        } else if (key.startsWith(SWITCH_KEY_PREFIX)) {
+          const tabId = Number(key.slice(SWITCH_KEY_PREFIX.length));
+          if (Number.isInteger(tabId) && typeof value === 'boolean') switches.set(tabId, value);
         } else if (key.startsWith(TOKEN_KEY_PREFIX)) {
           const token = value as EngineToken;
           if (token.expires > now) restoredTokens.push([key.slice(TOKEN_KEY_PREFIX.length), token]);
@@ -149,20 +158,29 @@ export default defineBackground(() => {
   /** Drops everything about a closed tab. */
   function forget(tabId: number): void {
     tabs.delete(tabId);
+    switches.delete(tabId);
     appliedBadges.delete(tabId);
     persisted.delete(tabId);
-    void browser.storage.session.remove(TAB_KEY_PREFIX + tabId).catch(() => {});
+    void browser.storage.session.remove([TAB_KEY_PREFIX + tabId, SWITCH_KEY_PREFIX + tabId]).catch(() => {});
     dropTokens((entry) => entry.tabId === tabId);
+  }
+
+  /** Remembers the popup's switch for a tab; stored before the reply, for frames that start next. */
+  async function setSwitch(tabId: number, enabled: boolean): Promise<void> {
+    switches.set(tabId, enabled);
+    await browser.storage.session.set({ [SWITCH_KEY_PREFIX + tabId]: enabled }).catch(() => {});
   }
 
   function applyBadge(tabId: number): void {
     const status = statusOf(tabId);
+    const icon = iconFor(status);
     const badge = badgeFor(status);
     const title = actionTitle(status);
-    const key = `${badge.text}|${badge.color}|${title}`;
+    const key = `${icon}|${badge.text}|${badge.color}|${title}`;
     if (appliedBadges.get(tabId) === key) return;
     appliedBadges.set(tabId, key);
     const ignore = () => {}; // The tab may have closed meanwhile.
+    void browser.action.setIcon({ tabId, path: { ...ACTION_ICON_PATHS[icon] } }).catch(ignore);
     void browser.action.setBadgeText({ tabId, text: badge.text }).catch(ignore);
     void browser.action.setBadgeBackgroundColor({ tabId, color: badge.color }).catch(ignore);
     void browser.action.setBadgeTextColor({ tabId, color: '#ffffff' }).catch(ignore);
@@ -282,15 +300,18 @@ export default defineBackground(() => {
   // ───────────── generic script: on demand and on chosen sites ─────────────
 
   async function enableOnTab(tabId: number): Promise<CommandResult> {
+    let error: string | undefined;
     try {
       await browser.scripting.executeScript({ target: { tabId, allFrames: true }, files: [GENERIC_SCRIPT] });
     } catch (e) {
-      return { status: statusOf(tabId), error: describeInjectionError(errorMessage(e)) };
+      error = describeInjectionError(errorMessage(e));
     }
-    // The script enables itself; the explicit command also covers a script injected earlier.
+    // The script enables itself; the explicit command also covers a script injected earlier, and
+    // the frames that run a script of their own when the page could not get one (YouTube embeds).
     const status = (await browser.tabs
       .sendMessage(tabId, { type: 'tab-command', command: 'enable' } satisfies RuntimeMessage)
       .catch(() => null)) as TabStatus | null;
+    if (error && !status?.enabled) return { status: statusOf(tabId), error };
     return { status: status ?? statusOf(tabId) };
   }
 
@@ -489,8 +510,10 @@ export default defineBackground(() => {
       case 'tab-status':
         void ready.then(() => onFrameStatus(tabId, sender.frameId ?? 0, sender.documentId, msg.status));
         return false;
-      case 'get-capture-state':
-        void ready.then(() => sendResponse({ active: !!tabs.get(tabId)?.capture?.enabled }));
+      case 'get-tab-state':
+        void ready.then(() =>
+          sendResponse({ capture: !!tabs.get(tabId)?.capture?.enabled, enabled: switches.get(tabId) ?? null } satisfies TabState),
+        );
         return true;
       case 'engine-token':
         void ready
@@ -512,6 +535,10 @@ export default defineBackground(() => {
     switch (msg.type) {
       case 'get-tab-status':
         void ready.then(() => sendResponse(statusOf(msg.tabId)));
+        return true;
+      case 'set-tab-enabled':
+        if (!Number.isInteger(msg.tabId) || typeof msg.enabled !== 'boolean') return false;
+        void ready.then(() => setSwitch(msg.tabId, msg.enabled)).then(() => sendResponse({ ok: true }));
         return true;
       case 'enable-on-tab':
         return reply(sendResponse, () => enableOnTab(msg.tabId));

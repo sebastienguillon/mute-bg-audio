@@ -10,8 +10,8 @@ web
 
 Everyday viewers who install the extension from the Chrome Web Store, on desktop Chrome. They watch
 YouTube videos (and sometimes videos on other sites) where the background music gets in the way of
-the voices. They are not technical, never read the README, and expect the extension to work on its
-own; the popup must explain what is happening in plain words.
+the voices. They are not technical, never read the README, and expect the extension to just work
+once they switch it on; the popup must explain what is happening in plain words.
 
 ## Product Purpose
 
@@ -28,14 +28,16 @@ filter.
 
 ## Operating Context
 
-- It starts by itself on youtube.com, www.youtube.com, m.youtube.com and in embedded YouTube players
-  (including youtube-nocookie.com). YouTube Music, Studio and TV, and all other sites, are opt-in:
-  per tab from the popup, or with "Always run on <site>".
+- Every tab starts off, on YouTube too (decided 2026-10-26): the user switches a tab on from the
+  popup, also mid-video. On YouTube (embedded players included) and on sites chosen with "Always run
+  on <site>", a tab stays on through reloads and navigation until switched off or closed; elsewhere
+  a reload switches it off. Outside YouTube, "Always run on <site>" is an explicit opt-in.
 - The toolbar popup is the only interface. Its controls: the per-tab switch ("Remove music on this
   tab"), a status line, "Music reduction" (0 dB to "Remove"), "Extra reduction between sentences",
   "Quality" (best available or CPU only), "Always run on <site>", the "Extension enabled" master
   switch, "Reload page" and "Use tab capture instead" when they apply, and a Licenses link. The
-  toolbar badge and tooltip show the current mode.
+  toolbar icon is in colour in a tab where it is on and greyed out elsewhere; a "!" badge flags a
+  video it can't process directly; the tooltip names the current mode.
 - Mode names users see: Look-ahead (GPU), Real-time (CPU), Tab capture. Tab capture makes Chrome
   show its "sharing this tab" indicator.
 
@@ -80,11 +82,12 @@ filter.
 
 ## Product Principles
 
-1. **Works without being understood.** It starts by itself where it can and explains its state in
-   plain words; technical detail is available but never required.
+1. **Works without being understood.** One switch per tab turns it on; the icon shows at a glance
+   whether a tab is on, and the popup explains its state in plain words; technical detail is
+   available but never required.
 2. **Privacy is structural.** Nothing leaves the device, not even crash reports or usage counts.
 3. **Honest about limits.** When a video can't be processed, say so plainly and offer the one thing
    that helps (tab capture, reloading the page), never a vague error.
-4. **Ask for the least.** Minimal permissions, opt-in outside YouTube, nothing running while a video
-   is paused, silent or muted.
+4. **Ask for the least.** Minimal permissions, off until the user switches a tab on, nothing
+   running while a video is paused, silent or muted.
 5. **Free means free.** No upsell, premium badge or donation nag inside the product.

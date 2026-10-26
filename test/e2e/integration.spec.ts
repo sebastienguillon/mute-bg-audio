@@ -13,8 +13,8 @@ import {
   lookahead,
   playbackAdvances,
   record,
-  sendToTab,
   startPlayback,
+  switchOn,
   tabIdOf,
   test,
   waitForMode,
@@ -28,6 +28,7 @@ test.describe('which media is routed', () => {
     await setSettings({ reductionDb: 60, quality: 'auto' });
     const page = await context.newPage();
     await page.goto(`${YT}/progressive.html`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForMode(page, ['realtime'], 60_000);
   });
@@ -36,6 +37,7 @@ test.describe('which media is routed', () => {
     await setSettings({ reductionDb: 60 });
     const page = await context.newPage();
     await page.goto(`${YT}/progressive.html?src=${encodeURIComponent(`https://media.test:${server.port}/media/video.webm`)}`);
+    await switchOn(page);
     await startPlayback(page);
     const st = await waitForMode(page, ['unsupported'], 30_000);
     expect(st.status.needsTabCapture).toBe(true);
@@ -47,6 +49,7 @@ test.describe('which media is routed', () => {
     const page = await context.newPage();
     const src = `https://media.test:${server.port}/media/video.webm?cors=1`;
     await page.goto(`${YT}/progressive.html?co=anonymous&src=${encodeURIComponent(src)}`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForMode(page, ['realtime'], 60_000);
     const s = await debugStatus(page);
@@ -59,6 +62,7 @@ test.describe('which media is routed', () => {
     const world = await ExtensionWorld.attach(page);
     const target = `https://media.test:${server.port}/media/video.webm`;
     await page.goto(`${YT}/progressive.html?src=${encodeURIComponent(`/redirect?to=${encodeURIComponent(target)}`)}`);
+    await switchOn(page);
     await startPlayback(page);
     const st = await waitForMode(page, ['unsupported'], 30_000);
     console.log('redirect status', JSON.stringify(st.status));
@@ -78,6 +82,7 @@ test.describe('which media is routed', () => {
     await setSettings({ reductionDb: 60 });
     const page = await context.newPage();
     await page.goto(`${YT}/progressive.html`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForMode(page, ['realtime'], 60_000);
     await page.evaluate(async (src) => {
@@ -102,6 +107,7 @@ test.describe('which media is routed', () => {
     const page = await context.newPage();
     const world = await ExtensionWorld.attach(page);
     await page.goto(`${YT}/mse.html?autoplay=1&muted=1`);
+    await switchOn(page);
     await page.waitForFunction(() => document.querySelector('video')!.currentTime > 2, null, { timeout: 20_000 });
     for (let i = 0; i < 4; i++) {
       const s = (await debugStatus(page))!;
@@ -123,6 +129,7 @@ test.describe('which media is routed', () => {
     await setSettings({ reductionDb: 12, quality: 'auto', gapReduction: false });
     const page = await context.newPage();
     await page.goto(`${YT}/feed.html`);
+    await switchOn(page);
     const show = (i: number) => page.evaluate((i) => (window as any).feed.show(i), i);
     const released: number[] = [];
     for (let i = 0; i < 10; i++) {
@@ -152,6 +159,7 @@ test.describe('which media is routed', () => {
     await setSettings({ reductionDb: 60, quality: 'auto' });
     const page = await context.newPage();
     await page.goto(`${YT}/shadow.html`);
+    await switchOn(page);
     await page.evaluate(() => { const v = document.getElementById('light') as HTMLVideoElement; v.muted = false; return v.play(); });
     await waitForStatus(page, (s) => s.status.mode === 'realtime' && !!s.current?.src.endsWith('player=light'), 'light-DOM video processed', 30_000);
     await page.evaluate(() => (document.getElementById('light') as HTMLVideoElement).pause());
@@ -179,6 +187,7 @@ test.describe('which media is routed', () => {
     await setSettings({ reductionDb: 60, quality: 'auto' });
     const page = await context.newPage();
     await page.goto(`${YT}/progressive.html?src=/media/e2e/noaudio.webm`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForStatus(page, (s) => s.graph.sources === 1 && s.mixer !== null, 'routed', 30_000);
     // Beyond the silence watchdog's 8 s.
@@ -199,6 +208,7 @@ test.describe('which media is routed', () => {
     await setSettings({ reductionDb: 60, quality: 'auto' });
     const page = await context.newPage();
     await page.goto(`${YT}/mse.html?preview=1`);
+    await switchOn(page);
     await page.waitForFunction(() => (document.getElementById('preview') as HTMLVideoElement).currentTime > 0.5);
     await startPlayback(page);
     await waitForMode(page, ['lookahead'], 90_000);
@@ -214,22 +224,63 @@ test.describe('which media is routed', () => {
 });
 
 test.describe('where the extension starts', () => {
-  test('music.youtube.com does not start by itself; the popup can switch it on', async ({ context, background, setSettings }) => {
+  test('a tab starts off; switched on mid-video it reaches look-ahead, stays on through a reload, and a new tab starts off', async ({ context, background, setSettings }) => {
+    test.setTimeout(300_000);
     await setSettings({ reductionDb: 60, quality: 'auto' });
+    // The toolbar icons the background sets, as Chrome took them (it loads the images then).
+    await background.evaluate(() => {
+      const g = globalThis as any;
+      g.__icons = [];
+      for (const api of new Set([g.chrome, g.browser].filter((b) => b?.action))) {
+        const setIcon = api.action.setIcon.bind(api.action);
+        api.action.setIcon = (details: { tabId: number; path: Record<number, string> }) =>
+          setIcon(details).then(
+            () => void g.__icons.push({ tabId: details.tabId, path: details.path[16] }),
+            (e: unknown) => void g.__icons.push({ tabId: details.tabId, path: details.path[16], error: String(e) }),
+          );
+      }
+    });
+    const icons = () => background.evaluate(() => (globalThis as any).__icons as { tabId: number; path: string; error?: string }[]);
+    /** The last icon set for the tab with `url`, among those set after the first `since`. */
+    const iconOf = async (url: string, since = 0) => {
+      const tabId = await tabIdOf(background, url);
+      return (await icons()).slice(since).filter((i) => i.tabId === tabId).at(-1)?.path;
+    };
+
     const page = await context.newPage();
-    await page.goto('https://music.youtube.com/mse.html');
+    await page.goto(`${YT}/mse.html`);
     await startPlayback(page);
     await page.waitForFunction(() => document.querySelector('video')!.currentTime > 2);
-    const st = (await debugStatus(page))!;
-    expect(st.status.mode).toBe('off');
-    expect(st.status.enabled).toBe(false);
+    let st = (await debugStatus(page))!;
+    expect(st.status).toMatchObject({ mode: 'off', enabled: false });
     expect(st.graph.sources).toBe(0);
     expect(st.engine).toBe('none');
-    // The popup's switch for this tab (tab-command to the top frame).
-    const tabId = await tabIdOf(background, 'https://music.youtube.com/');
-    const reply = await sendToTab(background, tabId, { type: 'tab-command', command: 'enable' });
-    expect(reply?.enabled).toBe(true);
-    await waitForMode(page, ['realtime', 'lookahead'], 90_000);
+    await expect.poll(() => iconOf(page.url())).toBe('/icon/off/16.png');
+    // What the page buffered before is replayed to the look-ahead worker (youtube-hook.content.ts).
+    await switchOn(page);
+    const t0 = Date.now();
+    await waitForMode(page, ['lookahead'], 90_000);
+    console.log('look-ahead', Date.now() - t0, 'ms after switching on mid-video');
+    await expect.poll(() => iconOf(page.url())).toBe('/icon/16.png');
+
+    // The popup's "Reload page", or any reload: the tab keeps its switch. (Chrome resets the
+    // icon of a tab that navigates: the background sets it again.)
+    const beforeReload = (await icons()).length;
+    await page.reload();
+    await startPlayback(page);
+    await waitForMode(page, ['lookahead'], 90_000);
+    await expect.poll(() => iconOf(page.url(), beforeReload)).toBe('/icon/16.png');
+
+    const other = await context.newPage();
+    await other.goto(`${YT}/mse.html?tab=2`);
+    await startPlayback(other);
+    await other.waitForFunction(() => document.querySelector('video')!.currentTime > 2);
+    st = (await debugStatus(other))!;
+    expect(st.status).toMatchObject({ mode: 'off', enabled: false });
+    expect(st.graph.sources).toBe(0);
+    await expect.poll(() => iconOf(other.url())).toBe('/icon/off/16.png');
+    // Chrome loaded every image it was given.
+    expect((await icons()).filter((i) => i.error)).toEqual([]);
   });
 });
 
@@ -239,6 +290,7 @@ test.describe('extension lifecycle', () => {
     const page = await context.newPage();
     const world = await ExtensionWorld.attach(page);
     await page.goto(`${YT}/mse.html`);
+    await switchOn(page);
     await world.traceAudioGraph();
     await startPlayback(page);
     await waitForMode(page, ['lookahead'], 90_000);
@@ -267,6 +319,7 @@ test.describe('extension lifecycle', () => {
     await setSettings({ reductionDb: 60, quality: 'realtime' });
     const page = await context.newPage();
     await page.goto(`${YT}/mse.html?media=long&ahead=30`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForMode(page, ['realtime'], 60_000);
     await page.evaluate(() => document.querySelectorAll('iframe[src^="chrome-extension:"]').forEach((f) => f.remove()));
@@ -304,6 +357,7 @@ test.describe('extension lifecycle', () => {
         }
       });
       await page.goto(`${YT}/mse.html?media=long&ahead=30`);
+      await switchOn(page);
       await startPlayback(page);
       const t0 = Date.now();
       const mode = quality === 'auto' ? 'lookahead' : 'realtime';
@@ -347,6 +401,7 @@ test.describe('extension lifecycle', () => {
     const page = await context.newPage();
     const world = await ExtensionWorld.attach(page);
     await page.goto(`${YT}/mse.html`);
+    await switchOn(page);
     await world.traceAudioGraph();
     await startPlayback(page);
     await waitForMode(page, ['realtime'], 60_000);
@@ -379,6 +434,7 @@ test.describe('page environments', () => {
     await setSettings({ reductionDb: 60, quality: 'auto' });
     const page = await context.newPage();
     await page.goto(`${YT}/progressive.html?coep=1`);
+    await switchOn(page);
     expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
     await startPlayback(page);
     await waitForMode(page, ['realtime'], 60_000);
@@ -388,6 +444,7 @@ test.describe('page environments', () => {
     await setSettings({ reductionDb: 60, quality: 'auto' });
     const page = await context.newPage();
     await page.goto(`${YT}/mse.html?coep=1`);
+    await switchOn(page);
     expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
     await startPlayback(page);
     await waitForMode(page, ['lookahead'], 90_000);
@@ -415,6 +472,7 @@ test.describe('page environments', () => {
       );
     });
     await page.goto(`${YT}/mse.html`);
+    await switchOn(page);
     await startPlayback(page);
     await waitForMode(page, ['lookahead'], 90_000);
     await page.waitForTimeout(2000);

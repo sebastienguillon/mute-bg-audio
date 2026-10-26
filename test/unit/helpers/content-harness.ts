@@ -45,8 +45,10 @@ export interface ContentHarness {
 
 export interface PageOptions {
   settings?: Partial<Settings>;
-  /** Answer to 'get-capture-state'. */
+  /** Answer to 'get-tab-state': whether tab capture processes the tab, */
   captureActive?: boolean;
+  /** and the tab's switch (default null: a new tab). */
+  tabEnabled?: boolean | null;
   /**
    * Fake engine behaviour: 'normal', 'no-ready' (never answers init), 'silent' (no status
    * messages), 'rt-loading' (its real-time worker reports ready only after setRtReady(true)).
@@ -146,6 +148,7 @@ export async function openContentPage(h: ContentHarness, options: PageOptions = 
     extOrigin: h.otherOrigin,
     settings: options.settings ?? {},
     captureActive: options.captureActive ?? false,
+    tabEnabled: options.tabEnabled ?? null,
     engineMode: options.engineMode ?? 'normal',
   });
   await page.goto(`${h.pageOrigin}${options.path ?? '/page.html'}`);
@@ -433,7 +436,13 @@ parent.postMessage({ type: 'bgmr-engine-hello' }, '*');
 </script>`;
 
 /** Runs in the page before anything else: defines `chrome`/`browser` like a content script sees them. */
-function installFakeExtension(cfg: { extOrigin: string; settings: Partial<Settings>; captureActive: boolean; engineMode: string }): void {
+function installFakeExtension(cfg: {
+  extOrigin: string;
+  settings: Partial<Settings>;
+  captureActive: boolean;
+  tabEnabled: boolean | null;
+  engineMode: string;
+}): void {
   type Listener = (...args: unknown[]) => unknown;
   const state = {
     alive: true,
@@ -468,7 +477,7 @@ function installFakeExtension(cfg: { extOrigin: string; settings: Partial<Settin
           state.tokenTimes.push(performance.now());
           return Promise.resolve({ ok: true });
         }
-        if (msg.type === 'get-capture-state') return Promise.resolve({ active: state.captureActive });
+        if (msg.type === 'get-tab-state') return Promise.resolve({ capture: state.captureActive, enabled: cfg.tabEnabled });
         return Promise.resolve(undefined);
       },
       onMessage: { addListener: (f: Listener) => messageListeners.add(f), removeListener: (f: Listener) => messageListeners.delete(f) },

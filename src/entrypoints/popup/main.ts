@@ -104,8 +104,14 @@ async function runAction(task: () => Promise<void>): Promise<void> {
 
 // ───────────── tab actions ─────────────
 
+/** Remembers the switch for the tab: frames and pages it loads afterwards start that way. */
+async function setTabSwitch(enabled: boolean): Promise<void> {
+  if (tabId !== null) await send({ type: 'set-tab-enabled', tabId, enabled });
+}
+
 async function enableHere(): Promise<void> {
   if (tabId === null) return;
+  await setTabSwitch(true);
   // Ask the top frame itself: on a page with a YouTube embed, the embed's controller answers a
   // broadcast although the page has no controller of its own yet.
   const top = await sendTabCommand('enable', 0);
@@ -123,10 +129,13 @@ async function enableHere(): Promise<void> {
   }
   // Injects the generic script into every frame Chrome lets us access, then enables all frames.
   applyResult(await send<CommandResult>({ type: 'enable-on-tab', tabId }));
+  // Nothing could start here: the switch shows off, so the tab must not stay on either.
+  if (!status?.enabled) await setTabSwitch(false);
 }
 
 async function disableHere(): Promise<void> {
   if (tabId === null) return;
+  await setTabSwitch(false);
   if (isCapturing(status)) applyResult(await send<CommandResult>({ type: 'stop-tab-capture', tabId }));
   const reply = await sendTabCommand('disable');
   if (reply) status = reply;

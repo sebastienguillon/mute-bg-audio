@@ -1,7 +1,7 @@
 // The background service worker's message handling, run against WXT's fake browser.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import type { RuntimeMessage, TabStatus } from '../../src/lib/protocol';
+import type { RuntimeMessage, TabState, TabStatus } from '../../src/lib/protocol';
 import { contentSender, pageSender, startBackground, type BackgroundHarness } from './helpers/ui-background-harness';
 
 const TAB = 5;
@@ -22,7 +22,9 @@ afterEach(() => {
 });
 
 const status = (tabId = TAB) => h.send({ type: 'get-tab-status', tabId }, popup) as Promise<TabStatus | null>;
-const captureState = (tabId = TAB) => h.send({ type: 'get-capture-state' }, contentSender(h, tabId));
+const tabState = (tabId = TAB) => h.send({ type: 'get-tab-state' }, contentSender(h, tabId));
+const captureState = async (tabId = TAB) => ({ active: ((await tabState(tabId)) as TabState).capture });
+const setSwitch = (enabled: boolean, tabId = TAB, sender = popup) => h.send({ type: 'set-tab-enabled', tabId, enabled }, sender);
 const captureBroadcasts = () =>
   h.tabMessages.filter((m) => m.message.type === 'capture-state').map((m) => [m.tabId, (m.message as { active: boolean }).active, m.options]);
 
@@ -31,7 +33,7 @@ function report(s: TabStatus, frameId = 0, tabId = TAB): Promise<unknown> {
 }
 
 describe('tab capture and in-page processing', () => {
-  it('tells every frame of the tab when capture starts and stops, and answers get-capture-state', async () => {
+  it('tells every frame of the tab when capture starts and stops, and answers get-tab-state', async () => {
     expect(await captureState()).toEqual({ active: false });
     const started = await h.send({ type: 'start-tab-capture', tabId: TAB }, popup);
     expect(started).toMatchObject({ status: { mode: 'tabcapture' } });
@@ -76,10 +78,71 @@ describe('tab capture and in-page processing', () => {
     expect(captureBroadcasts()).toEqual([[TAB, false, undefined]]);
   });
 
-  it('only answers get-capture-state for content scripts of a tab', async () => {
+  it('only answers get-tab-state for content scripts of a tab', async () => {
     await h.send({ type: 'start-tab-capture', tabId: TAB }, popup);
-    expect(await h.send({ type: 'get-capture-state' }, popup)).toBeUndefined();
-    expect(await h.send({ type: 'get-capture-state' }, { id: fakeBrowser.runtime.id, url: 'https://x.test/' })).toBeUndefined();
+    expect(await h.send({ type: 'get-tab-state' }, popup)).toBeUndefined();
+    expect(await h.send({ type: 'get-tab-state' }, { id: fakeBrowser.runtime.id, url: 'https://x.test/' })).toBeUndefined();
+  });
+});
+
+describe("the tab's switch", () => {
+  it('is unset in a new tab, then what the popup last set, for the frames that start afterwards', async () => {
+    expect(await tabState()).toEqual({ capture: false, enabled: null });
+    expect(await setSwitch(true)).toEqual({ ok: true });
+    expect(await tabState()).toEqual({ capture: false, enabled: true });
+    await setSwitch(false);
+    expect(await tabState()).toEqual({ capture: false, enabled: false });
+    // Another tab starts unset.
+    h.documents.set(6, new Map([[0, 'doc-6']]));
+    expect(await tabState(6)).toEqual({ capture: false, enabled: null });
+  });
+
+  it('survives a service-worker restart and a reload, and is forgotten with the tab', async () => {
+    await setSwitch(true);
+    await h.restart();
+    // The page reloads: its new document's script asks.
+    h.documents.set(TAB, new Map([[0, 'doc-reloaded']]));
+    expect(await tabState()).toEqual({ capture: false, enabled: true });
+
+    await fakeBrowser.tabs.onRemoved.trigger(TAB, { windowId: 1, isWindowClosing: false });
+    await h.settle();
+    expect(await tabState()).toEqual({ capture: false, enabled: null });
+    expect(Object.keys(await fakeBrowser.storage.session.get(null)).filter((k) => k.startsWith('switch:'))).toEqual([]);
+  });
+
+  it('is only set by extension pages', async () => {
+    expect(await setSwitch(true, TAB, contentSender(h, TAB))).toBeUndefined();
+    expect(await h.send({ type: 'set-tab-enabled', tabId: TAB, enabled: 'yes' } as unknown as RuntimeMessage, popup)).toBeUndefined();
+    expect(await tabState()).toEqual({ capture: false, enabled: null });
+  });
+});
+
+describe('toolbar icon', () => {
+  it('is grey until the tab is on, in colour while it is, and grey again when it is switched off', async () => {
+    await report({ mode: 'off', site: 'youtube', enabled: false });
+    expect(h.icons.get(TAB)).toBe('/icon/off/16.png');
+    await report({ mode: 'waiting', site: 'youtube', enabled: true });
+    expect(h.icons.get(TAB)).toBe('/icon/16.png');
+    await report({ mode: 'lookahead', site: 'youtube', enabled: true, latencyMs: 0 });
+    expect(h.icons.get(TAB)).toBe('/icon/16.png');
+    await report({ mode: 'off', site: 'youtube', enabled: false });
+    expect(h.icons.get(TAB)).toBe('/icon/off/16.png');
+  });
+
+  it('is in colour while tab capture processes the tab', async () => {
+    await report({ mode: 'off', site: 'youtube', enabled: false });
+    await h.send({ type: 'start-tab-capture', tabId: TAB }, popup);
+    expect(h.icons.get(TAB)).toBe('/icon/16.png');
+    await h.send({ type: 'stop-tab-capture', tabId: TAB }, popup);
+    expect(h.icons.get(TAB)).toBe('/icon/off/16.png');
+  });
+
+  it('is set again after a navigation (Chrome resets the icons of a tab when it navigates)', async () => {
+    await report({ mode: 'realtime', site: 'youtube', enabled: true });
+    h.icons.clear();
+    await fakeBrowser.tabs.onUpdated.trigger(TAB, { status: 'complete' }, { id: TAB } as never);
+    await h.settle();
+    expect(h.icons.get(TAB)).toBe('/icon/16.png');
   });
 });
 

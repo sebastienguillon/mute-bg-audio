@@ -127,7 +127,7 @@ describe('activation', () => {
   it("prefers YouTube's main player over an inline preview", async () => {
     const p = await open();
     await startController(p, 'youtube');
-    // The test host is not a YouTube auto-start host: enable like the popup does.
+    // Off until the tab is switched on, like the popup does.
     await dispatch(p, { type: 'tab-command', command: 'enable' });
     await evaluate(p, () => {
       const player = document.createElement('div');
@@ -161,17 +161,38 @@ describe('activation', () => {
     await waitFor(p, mode('realtime'), 10_000, 'shadow video processed');
   });
 
-  it('does not start on YouTube hosts other than the main ones unless enabled on the tab', async () => {
+  it('does not start on YouTube until the tab is switched on', async () => {
     const p = await open();
     await startController(p, 'youtube');
     await addMedia(p, { id: 'v', src: '/media/video.webm' });
     await play(p, 'v');
     await p.waitForTimeout(500);
     expect((await snapshot(p)).status).toMatchObject({ mode: 'off', enabled: false });
+    // Nothing routed: the element keeps its own audio path, and no engine or audio context exists.
     expect((await snapshot(p)).graph.sources).toBe(0);
+    expect((await snapshot(p)).engine).toBe('none');
+    expect(await evaluate(p, () => (window as unknown as { __controller: { ctx: unknown } }).__controller.ctx)).toBeNull();
     // Already playing: enabling picks it up without a new 'play' event.
     await dispatch(p, { type: 'tab-command', command: 'enable' });
     await waitFor(p, mode('realtime'), 10_000, 'realtime after enabling');
+  });
+
+  it('starts on YouTube in a tab the user switched on (a reload, a frame that starts later)', async () => {
+    const p = await open({ tabEnabled: true });
+    await startController(p, 'youtube');
+    await addMedia(p, { id: 'v', src: '/media/video.webm' });
+    await play(p, 'v');
+    await waitFor(p, mode('realtime'), 10_000, 'realtime without a command');
+  });
+
+  it('keeps the generic script off in a tab the user switched off (a site it always runs on)', async () => {
+    const p = await open({ tabEnabled: false });
+    await startController(p);
+    await addMedia(p, { id: 'v', src: '/media/video.webm' });
+    await play(p, 'v');
+    await p.waitForTimeout(500);
+    expect((await snapshot(p)).status).toMatchObject({ mode: 'off', enabled: false });
+    expect((await snapshot(p)).graph.sources).toBe(0);
   });
 });
 
@@ -363,7 +384,7 @@ describe('audio path and engine lifecycle', () => {
     let s = await snapshot(p);
     expect(s.status).toMatchObject({ mode: 'off', enabled: true, detail: 'Tab capture is processing this tab.' });
     expect(s.graph.sources).toBe(0);
-    expect((await extState(p)).sent.some((m) => m.type === 'get-capture-state')).toBe(true);
+    expect((await extState(p)).sent.some((m) => m.type === 'get-tab-state')).toBe(true);
     await dispatch(p, { type: 'capture-state', active: false });
     await waitFor(p, mode('realtime'), 10_000, 'processing after capture stopped');
     await dispatch(p, { type: 'capture-state', active: true });
