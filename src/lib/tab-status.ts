@@ -101,7 +101,7 @@ export function badgeFor(status: TabStatus | null): Badge {
   return { text: '', color: BADGE_ON_COLOR };
 }
 
-export const EXTENSION_NAME = 'Remove Background Music';
+export const EXTENSION_NAME = 'Mute BG Audio';
 
 const SHORT_LABELS: Readonly<Record<TabMode, string>> = {
   off: 'Off',

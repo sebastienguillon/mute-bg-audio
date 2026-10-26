@@ -136,16 +136,16 @@ describe('badgeFor', () => {
 
 describe('actionTitle', () => {
   it('names the extension and the coarse state', () => {
-    expect(actionTitle(null)).toBe('Remove Background Music');
-    expect(actionTitle(st('realtime'))).toBe('Remove Background Music: Real-time (CPU)');
+    expect(actionTitle(null)).toBe('Mute BG Audio');
+    expect(actionTitle(st('realtime'))).toBe('Mute BG Audio: Real-time (CPU)');
     expect(actionTitle(st('lookahead', { lookahead: { state: 'ready', backend: 'webgpu', aheadSeconds: 12 } }))).toBe(
-      'Remove Background Music: Look-ahead (GPU)',
+      'Mute BG Audio: Look-ahead (GPU)',
     );
     expect(actionTitle(st('unsupported', { needsTabCapture: true }))).toBe(
-      "Remove Background Music: Can't process this video directly – tab capture available",
+      "Mute BG Audio: Can't process this video directly – tab capture available",
     );
-    expect(actionTitle(st('waiting', { detail: 'Paused.' }))).toBe('Remove Background Music: Paused');
-    expect(actionTitle(st('waiting', { detail: 'No sound.' }))).toBe('Remove Background Music: Waiting for sound');
+    expect(actionTitle(st('waiting', { detail: 'Paused.' }))).toBe('Mute BG Audio: Paused');
+    expect(actionTitle(st('waiting', { detail: 'No sound.' }))).toBe('Mute BG Audio: Waiting for sound');
   });
 });
 

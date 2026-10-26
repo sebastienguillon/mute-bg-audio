@@ -45,7 +45,7 @@ describe('third-party notices', () => {
   it('name the versions of the extension and of the bundled packages', () => {
     const notices = readFileSync(join(ROOT, NOTICES), 'utf8');
     const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string };
-    expect(notices.startsWith(`﻿THIRD-PARTY SOFTWARE NOTICES\nRemove Background Music ${version}\n`)).toBe(true);
+    expect(notices.startsWith(`﻿THIRD-PARTY SOFTWARE NOTICES\nMute BG Audio ${version}\n`)).toBe(true);
     const [ort, wxt, wxtBrowser] = bundledPackages();
     expect(notices).toContain(`npm package onnxruntime-web ${ort!.version}`);
     expect(notices).toContain(`ThirdPartyNotices.txt of the v${ort!.version} tag`);

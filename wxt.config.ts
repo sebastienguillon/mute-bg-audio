@@ -12,7 +12,7 @@ export default defineConfig({
   manifestVersion: 3,
   targetBrowsers: ['chrome'],
   manifest: {
-    name: 'Remove Background Music',
+    name: 'Mute BG Audio',
     description: 'Turns down or removes background music in videos while keeping the voices. Runs entirely on your device.',
     // 137: WebAssembly JSPI (ONNX Runtime Web JSPI build).
     minimum_chrome_version: '137',
@@ -32,7 +32,7 @@ export default defineConfig({
         matches: ['<all_urls>'],
       },
     ],
-    action: { default_title: 'Remove Background Music' },
+    action: { default_title: 'Mute BG Audio' },
   },
   // `pnpm dev` only (builds use neither): the extension pages load their scripts and styles from
   // the dev server. Scripts are CORS requests, but stylesheets are not, so under the pages' COEP

@@ -1,6 +1,7 @@
 {
   "name": "mute-bg-audio",
   "description": "Chrome extension that removes background music from videos while keeping speech.",
+  "license": "MIT",
   "private": true,
   "version": "0.1.0",
   "type": "module",

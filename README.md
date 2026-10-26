@@ -1,6 +1,6 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# Remove Background Music
+# Mute BG Audio
 
 A Chrome extension that turns down or removes the background music in videos while keeping the
 voices. YouTube gets the best results; other sites work when their media can be processed. All
@@ -109,3 +109,7 @@ when it is out of date or a build bundles a package it does not cover.
 
 The MDX-Net models were trained by the UVR community on data whose provenance is not fully
 documented. Check the model licensing before any commercial distribution.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The third-party components above keep their own licenses.

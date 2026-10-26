@@ -201,7 +201,7 @@ export function renderNotices(root = ROOT) {
 
   const out = [
     'THIRD-PARTY SOFTWARE NOTICES',
-    `Remove Background Music ${version}`,
+    `Mute BG Audio ${version}`,
     '',
     'This extension includes the third-party components listed below, with their copyright',
     'notices and licenses. The extension itself downloads nothing at runtime.',
