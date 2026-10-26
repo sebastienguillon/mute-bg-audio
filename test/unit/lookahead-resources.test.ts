@@ -201,6 +201,21 @@ describe('LookaheadCore speed guard', () => {
     h.core.dispose();
   });
 
+  it('measures the speed of blocks posted like the worker does (their buffers transferred)', async () => {
+    const clock = { now: 0 };
+    const backend = slowBackend({ clock }, 0.9);
+    const h = createHarness({ decoderFactory: fakeDecoderFactory(mix), backend, aheadSeconds: 40, now: () => clock.now }, { transfer: true });
+    h.core.setActiveTimeline(1);
+    appendCopies(h, webm, 1, 2);
+    h.core.setPlayhead({ ...playheadAt(h, 0), at: clock.now });
+    await waitFor(() => lastStatus(h).state === 'unavailable', 20_000, 'unavailable');
+    expect(lastStatus(h)).toEqual({ state: 'unavailable', reason: TOO_SLOW });
+    expect(backend.runs).toBe(4);
+    // The worklet got the blocks.
+    expect(h.blocks(1).every((b) => b.speechL.length > 0 && b.residualR.length === b.speechL.length)).toBe(true);
+    h.core.dispose();
+  });
+
   it('keeps running a backend at 0.3 × real time', async () => {
     const clock = { now: 0 };
     const backend = slowBackend({ clock }, 0.3);

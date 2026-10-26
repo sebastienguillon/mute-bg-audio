@@ -645,7 +645,9 @@ export class LookaheadCore {
     this.pendingMs += this.now() - t0;
     if (this.stream.lastRanModel) this.pendingModel = true;
     if (!block) return;
-    const blockEnd = block.start + block.vocalsL.length;
+    // Read before sendBlock(): posting the block transfers (detaches) its buffers.
+    const samples = block.vocalsL.length;
+    const blockEnd = block.start + samples;
     // Blocks stop where the decoded audio ends. When it ends after this block (in the chunk's
     // overlap with the next one), they stop at the block end: the overlap was computed with
     // silence after the cut and must not be overlap-added with real audio, so processing
@@ -655,7 +657,7 @@ export class LookaheadCore {
     const end = Math.min(blockEnd, job.cut ?? blockEnd);
     if (end > start) this.sendBlock(job, block, start, end);
     this.failures = 0;
-    this.measure(block.vocalsL.length);
+    this.measure(samples);
     this.producedBlock = true;
     this.updateStatus();
   }

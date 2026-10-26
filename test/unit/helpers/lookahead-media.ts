@@ -231,8 +231,15 @@ export interface Harness {
   blockEnd(timelineId?: number): number;
 }
 
-/** Creates a LookaheadCore recording its outputs; `clock.now` is its clock (ms). */
-export function createHarness(opts: Partial<LookaheadCoreOptions> & Pick<LookaheadCoreOptions, 'decoderFactory'>): Harness {
+/**
+ * Creates a LookaheadCore recording its outputs; `clock.now` is its clock (ms). With `transfer`,
+ * posts are structured clones and the transferred buffers are detached, as by the worker's
+ * MessagePort.
+ */
+export function createHarness(
+  opts: Partial<LookaheadCoreOptions> & Pick<LookaheadCoreOptions, 'decoderFactory'>,
+  { transfer = false }: { transfer?: boolean } = {},
+): Harness {
   const posts: LaFromWorker[] = [];
   const transfers: (Transferable[] | undefined)[] = [];
   const statuses: LookaheadStatus[] = [];
@@ -240,9 +247,9 @@ export function createHarness(opts: Partial<LookaheadCoreOptions> & Pick<Lookahe
   const core = new LookaheadCore({
     model: MDX_MODELS.Kim_Vocal_2,
     backend: identityBackend,
-    postWorklet: (msg, transfer) => {
-      posts.push(msg);
-      transfers.push(transfer);
+    postWorklet: (msg, list) => {
+      posts.push(transfer ? structuredClone(msg, { transfer: list ?? [] }) : msg);
+      transfers.push(list);
     },
     onStatus: (s) => statuses.push(s),
     now: () => clock.now,
