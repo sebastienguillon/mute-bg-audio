@@ -1,10 +1,11 @@
-// The look-ahead core with the real Kim_Vocal_2 model (onnxruntime-node, CPU EP): processes 20 s
-// ahead of the playhead from YouTube-like WebM appends. Skipped when the model file is missing
-// (run `pnpm fetch-models`).
+// The look-ahead core with the real model of each build (Kim_Vocal_2, SCNet; onnxruntime-node,
+// CPU EP): processes 20 s ahead of the playhead from YouTube-like WebM appends. Skipped when the
+// model file is missing (run `pnpm fetch-models` for Kim_Vocal_2).
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { MDX_MODELS, type MdxBackend } from '../../src/lib/mdx/mdx';
+import { KIM_VOCAL_2, SCNET, type LookaheadModel } from '../../src/lib/lookahead/models';
+import type { MdxBackend } from '../../src/lib/mdx/mdx';
 import {
   ROOT,
   SR,
@@ -19,13 +20,11 @@ import {
   webmAppends,
 } from './helpers/lookahead-media';
 
-const MODEL = MDX_MODELS.Kim_Vocal_2;
-const MODEL_PATH = join(ROOT, 'public/models', MODEL.file);
 const AHEAD = 20;
 
-async function onnxBackend(): Promise<{ backend: MdxBackend; runs: number[] }> {
+async function onnxBackend(model: LookaheadModel, path: string): Promise<{ backend: MdxBackend; runs: number[] }> {
   const ort = await import('onnxruntime-node');
-  const session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ['cpu'] });
+  const session = await ort.InferenceSession.create(path, { executionProviders: ['cpu'] });
   const input = session.inputNames[0]!;
   const output = session.outputNames[0]!;
   const runs: number[] = [];
@@ -34,7 +33,7 @@ async function onnxBackend(): Promise<{ backend: MdxBackend; runs: number[] }> {
     backend: {
       run: async (data) => {
         const t = performance.now();
-        const result = await session.run({ [input]: new ort.Tensor('float32', data, [1, 4, MODEL.dimF, MODEL.dimT]) });
+        const result = await session.run({ [input]: new ort.Tensor('float32', data, model.dims) });
         runs.push(performance.now() - t);
         return result[output]!.data as Float32Array;
       },
@@ -42,17 +41,19 @@ async function onnxBackend(): Promise<{ backend: MdxBackend; runs: number[] }> {
   };
 }
 
-describe('LookaheadCore with Kim_Vocal_2', () => {
-  it.skipIf(!existsSync(MODEL_PATH))(
+describe.each([KIM_VOCAL_2, SCNET].map((m) => [m.name, m] as const))('LookaheadCore with %s', (name, model) => {
+  const path = join(ROOT, 'public/models', model.file);
+
+  it.skipIf(!existsSync(path))(
     `processes ${AHEAD} s ahead of the playhead`,
     async () => {
       const mix = readFixtureWav('mix.wav');
       const speech = readFixtureWav('speech.wav');
       const music = readFixtureWav('music.wav');
       const webm = new Uint8Array(readFileSync(fixturePath('mix.webm')));
-      const { backend, runs } = await onnxBackend();
+      const { backend, runs } = await onnxBackend(model, path);
       // The CPU backend of onnxruntime-node is not what the speed guard is for (it may be slow on a busy machine).
-      const h = createHarness({ decoderFactory: fakeDecoderFactory(mix), backend, model: MODEL, aheadSeconds: AHEAD, now: () => performance.now(), maxRtf: Infinity });
+      const h = createHarness({ decoderFactory: fakeDecoderFactory(mix), backend, model, aheadSeconds: AHEAD, now: () => performance.now(), maxRtf: Infinity });
       const t0 = performance.now();
       h.core.setActiveTimeline(1);
       h.core.onHook(sbAdd(1, 1));
@@ -87,7 +88,7 @@ describe('LookaheadCore with Kim_Vocal_2', () => {
       const status = h.statuses[h.statuses.length - 1];
       console.log(
         [
-          `Kim_Vocal_2 (onnxruntime-node CPU): ${(span.end / SR).toFixed(2)} s ahead in ${blocks.length} blocks, ` +
+          `${name} (onnxruntime-node CPU): ${(span.end / SR).toFixed(2)} s ahead in ${blocks.length} blocks, ` +
             `wall ${(wallMs / 1000).toFixed(2)} s (first block after ${(firstBlockMs / 1000).toFixed(2)} s)`,
           `  model runs: ${runs.map((t) => t.toFixed(0)).join(', ')} ms; status ${JSON.stringify(status)}`,
           `  SI-SDR speech ${speechSdr.toFixed(2)} dB (mix ${baseline.toFixed(2)} dB), residual vs music ${musicSdr.toFixed(2)} dB`,

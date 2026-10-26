@@ -1,28 +1,42 @@
 /**
- * Streaming MDX-Net separator: python-audio-separator's demix() run incrementally, with
- * input-rate (48 kHz) audio in and out.
+ * Streaming separator for the chunked spectrogram models (MDX-Net, SCNet): python-audio-separator's
+ * demix() or demucs' apply_model() run incrementally, with input-rate (48 kHz) audio in and out.
  *
- * Chunk k covers model-rate (44.1 kHz) samples [k·step − trim, k·step − trim + chunkSize) of a
- * grid anchored at the origin, where step = int((1 − overlap) · chunkSize) and trim = nFft/2.
- * Each chunk's vocals are weighted by np.hanning(chunkSize) and overlap-added with a divider
- * (Σ windows), so a sample is final once every chunk containing it has run: after chunk k, all
+ * Chunk k covers model-rate samples [k·step − trim, k·step − trim + chunkSize) of a grid anchored
+ * at the origin, where step = int((1 − overlap) · chunkSize). Each chunk's vocals are weighted by
+ * np.hanning(chunkSize) (demix) or apply_model()'s triangle and overlap-added with a divider
+ * (Σ weights), so a sample is final once every chunk containing it has run: after chunk k, all
  * model-rate samples j < (k + 1)·step − trim. Final samples are resampled back to the input
  * rate; enough of their tail is kept so that block seams are exact.
  *
- * Unlike demix(), each chunk is peak-normalised before the model (UVR-style) and the context
- * before the origin is real audio instead of zeros. Returned vocals are the raw model estimate:
- * the residual is mix − compensate · vocals (see MdxModelConfig.compensate).
+ * Unlike demix(), chunks can be peak-normalised before the model (UVR-style, MDX-Net), and the
+ * context before the origin is real audio instead of zeros. Returned vocals are the raw model
+ * estimate: the residual is mix − compensate · vocals (see LookaheadModel.compensate).
  */
 import { SAMPLE_RATE } from '../constants';
 import { resampleInputRange, resampleMargin, resampleOutputEnd, resampleRange } from '../dsp/resample';
-import { MdxChunkCodec, type MdxBackend, type MdxModelConfig } from './mdx';
+import type { ChunkCodec, MdxBackend } from './mdx';
 
 /** Chunks whose peak is below this (−80 dBFS) skip the model and yield silent vocals. */
 const SILENCE_PEAK = 1e-4;
 
+/** Overlap-add weights: np.hanning (demix()) or demucs apply_model()'s triangle. */
+export type OlaWeights = 'hann' | 'triangle';
+
 export interface MdxStreamOptions {
+  /** Model sample rate in Hz: the rate of the codec's chunks. */
+  modelRate: number;
+  /**
+   * Model-rate samples of context before the origin, where the first chunk starts (nFft / 2: the
+   * samples within half an STFT window of a chunk edge are the least accurate).
+   */
+  trim: number;
   /** Fraction of a chunk shared with the next one, in (0, 1) (default 0.25). */
   overlap?: number;
+  /** Weights of the overlap-add (default 'hann'). */
+  weights?: OlaWeights;
+  /** Each chunk is scaled to peak 1 before the model and its vocals scaled back (default true). */
+  peakNormalize?: boolean;
   /** Sample rate of the input and output audio (default SAMPLE_RATE, 48 kHz). */
   inputRate?: number;
 }
@@ -35,13 +49,14 @@ export interface MdxStreamBlock {
 }
 
 export class MdxStream {
-  private readonly codec: MdxChunkCodec;
+  private readonly codec: ChunkCodec;
   private readonly backend: MdxBackend;
   private readonly inputRate: number;
   private readonly modelRate: number;
   private readonly chunkSize: number;
   private readonly step: number;
   private readonly trim: number;
+  private readonly peakNormalize: boolean;
   private readonly window: Float64Array;
   /** Model-rate input of the current chunk. */
   private readonly chunkL: Float32Array;
@@ -64,22 +79,21 @@ export class MdxStream {
   private busy = false;
   private ranModel = false;
 
-  constructor(cfg: MdxModelConfig, backend: MdxBackend, opts: MdxStreamOptions = {}) {
+  constructor(codec: ChunkCodec, backend: MdxBackend, opts: MdxStreamOptions) {
     const overlap = opts.overlap ?? 0.25;
     if (!(overlap > 0 && overlap < 1)) throw new RangeError(`overlap must be in (0, 1), got ${overlap}`);
-    this.codec = new MdxChunkCodec(cfg);
+    this.codec = codec;
     this.backend = backend;
     this.inputRate = opts.inputRate ?? SAMPLE_RATE;
-    this.modelRate = cfg.sampleRate;
-    this.chunkSize = this.codec.chunkSize;
+    this.modelRate = opts.modelRate;
+    this.chunkSize = codec.chunkSize;
     this.step = Math.floor((1 - overlap) * this.chunkSize);
-    this.trim = cfg.nFft / 2;
+    this.trim = opts.trim;
+    this.peakNormalize = opts.peakNormalize ?? true;
     const outMargin = resampleMargin(this.modelRate, this.inputRate);
     if (outMargin >= this.trim || this.step < 1) throw new RangeError('chunk geometry too small for the resampler');
+    this.window = olaWeights(opts.weights ?? 'hann', this.chunkSize);
     const n = this.chunkSize;
-    this.window = new Float64Array(n);
-    // np.hanning(n): symmetric Hann.
-    for (let i = 0; i < n; i++) this.window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1));
     this.chunkL = new Float32Array(n);
     this.chunkR = new Float32Array(n);
     this.accL = new Float64Array(n);
@@ -150,11 +164,14 @@ export class MdxStream {
 
     let vocals: [Float32Array, Float32Array] | null = null;
     this.ranModel = peak >= SILENCE_PEAK;
+    const gain = this.peakNormalize ? peak : 1;
     if (this.ranModel) {
-      const scale = 1 / peak;
-      for (let i = 0; i < chunkSize; i++) {
-        chunkL[i] = chunkL[i]! * scale;
-        chunkR[i] = chunkR[i]! * scale;
+      if (this.peakNormalize) {
+        const scale = 1 / peak;
+        for (let i = 0; i < chunkSize; i++) {
+          chunkL[i] = chunkL[i]! * scale;
+          chunkR[i] = chunkR[i]! * scale;
+        }
       }
       const generation = this.generation;
       this.busy = true;
@@ -165,7 +182,7 @@ export class MdxStream {
       }
       if (generation !== this.generation) return null;
     }
-    this.accumulate(vocals, peak);
+    this.accumulate(vocals, gain);
     this.chunkIndex++;
     return this.emit();
   }
@@ -175,7 +192,7 @@ export class MdxStream {
     return this.chunkIndex * this.step - this.trim;
   }
 
-  /** Overlap-adds the chunk's vocals, moves the final samples to the vocal buffer and shifts by step. */
+  /** Overlap-adds the chunk's vocals (· gain), moves the final samples to the vocal buffer and shifts by step. */
   private accumulate(vocals: [Float32Array, Float32Array] | null, gain: number): void {
     const { accL, accR, accW, window, chunkSize, step, vocL, vocR } = this;
     if (vocals) {
@@ -230,4 +247,20 @@ export class MdxStream {
     }
     return block;
   }
+}
+
+/** Overlap-add weights of an n-sample chunk. */
+function olaWeights(weights: OlaWeights, n: number): Float64Array {
+  const w = new Float64Array(n);
+  if (weights === 'hann') {
+    // np.hanning(n): symmetric Hann.
+    for (let i = 0; i < n; i++) w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1));
+    return w;
+  }
+  // apply_model(): cat(arange(1, n//2 + 1), arange(n − n//2, 0, −1)) / max.
+  const half = Math.floor(n / 2);
+  const max = Math.max(half, n - half);
+  for (let i = 0; i < half; i++) w[i] = (i + 1) / max;
+  for (let i = half; i < n; i++) w[i] = (n - i) / max;
+  return w;
 }

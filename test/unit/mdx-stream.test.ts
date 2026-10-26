@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { MDX_MODELS, type MdxBackend } from '../../src/lib/mdx/mdx';
-import { MdxStream } from '../../src/lib/mdx/mdx-stream';
+import { createModelStream, KIM_VOCAL_2, SCNET, type LookaheadModel } from '../../src/lib/lookahead/models';
+import type { MdxBackend } from '../../src/lib/mdx/mdx';
+import { MdxStream, type MdxStreamOptions } from '../../src/lib/mdx/mdx-stream';
 import { bandLimit, fadeEnds, readFixture, sliceZeroFilled } from './helpers/dsp-audio';
 
-const cfg = MDX_MODELS.Kim_Vocal_2;
 const RATE = 48000;
 const identity: MdxBackend = { run: async (input) => input };
+
+/** The stream of a registry model, with some options replaced. */
+function streamOf(model: LookaheadModel, backend: MdxBackend, opts: Partial<MdxStreamOptions> = {}): MdxStream {
+  return new MdxStream(model.createCodec(), backend, { ...model.stream, modelRate: model.sampleRate, ...opts });
+}
 
 /** 60 s of mix.wav looped, band-limited to 100 Hz..16 kHz (inside the MDX band) and faded in/out. */
 function testSignal(): [Float32Array, Float32Array] {
@@ -64,11 +69,11 @@ function worstBlockErrorDb(out: Float32Array, ref: Float32Array, from: number, t
   return 20 * Math.log10(worst / refRms);
 }
 
-describe('MdxStream', () => {
+describe('MdxStream (Kim_Vocal_2)', () => {
   const [left, right] = testSignal();
 
   it('needs the trim context before the origin and the resampler margins', () => {
-    const stream = new MdxStream(cfg, identity);
+    const stream = createModelStream(KIM_VOCAL_2, identity);
     stream.reset(10000);
     const range = stream.nextInputRange();
     // Chunk 0 covers 44.1 kHz samples [-3840, 257280) around the origin.
@@ -79,7 +84,7 @@ describe('MdxStream', () => {
   });
 
   it.each([0, 123457])('identity model: output = band-limited input after origin %i, no seams', async (origin) => {
-    const stream = new MdxStream(cfg, identity);
+    const stream = createModelStream(KIM_VOCAL_2, identity);
     const n = left.length;
     const run = await runStream(stream, left, right, origin, n);
     const worstL = worstBlockErrorDb(run.left, left, origin, n);
@@ -101,16 +106,16 @@ describe('MdxStream', () => {
   });
 
   it('supports other overlaps', async () => {
-    const stream = new MdxStream(cfg, identity, { overlap: 0.5 });
+    const stream = streamOf(KIM_VOCAL_2, identity, { overlap: 0.5 });
     const end = 20 * RATE;
     const run = await runStream(stream, left, right, 777, end);
     expect(worstBlockErrorDb(run.left, left, 777, end - RATE)).toBeLessThan(-60);
-    expect(() => new MdxStream(cfg, identity, { overlap: 0 })).toThrow(RangeError);
-    expect(() => new MdxStream(cfg, identity, { overlap: 1 })).toThrow(RangeError);
+    expect(() => streamOf(KIM_VOCAL_2, identity, { overlap: 0 })).toThrow(RangeError);
+    expect(() => streamOf(KIM_VOCAL_2, identity, { overlap: 1 })).toThrow(RangeError);
   });
 
   it('is deterministic across resets and independent of block boundaries', async () => {
-    const stream = new MdxStream(cfg, identity);
+    const stream = createModelStream(KIM_VOCAL_2, identity);
     const end = 15 * RATE;
     const a = await runStream(stream, left, right, 5000, end);
     const b = await runStream(stream, left, right, 5000, end);
@@ -127,7 +132,7 @@ describe('MdxStream', () => {
         return input;
       },
     };
-    const stream = new MdxStream(cfg, recording);
+    const stream = createModelStream(KIM_VOCAL_2, recording);
     const quiet = left.map((v) => v * 0.01);
     const silent = new Float32Array(left.length);
     // One chunk of quiet audio: the model sees the same spectrum level as for full-scale audio.
@@ -152,14 +157,14 @@ describe('MdxStream', () => {
   });
 
   it('rejects input that does not cover nextInputRange()', async () => {
-    const stream = new MdxStream(cfg, identity);
+    const stream = createModelStream(KIM_VOCAL_2, identity);
     await expect(stream.processNext(new Float32Array(10), new Float32Array(10))).rejects.toThrow(RangeError);
   });
 
   it('discards a chunk that was in flight during reset()', async () => {
     let release: () => void = () => {};
     const slow: MdxBackend = { run: (input) => new Promise((resolve) => (release = () => resolve(input))) };
-    const stream = new MdxStream(cfg, slow);
+    const stream = createModelStream(KIM_VOCAL_2, slow);
     const range = stream.nextInputRange();
     const pending = stream.processNext(sliceZeroFilled(left, range.start, range.end), sliceZeroFilled(right, range.start, range.end));
     await expect(stream.processNext(new Float32Array(1), new Float32Array(1))).rejects.toThrow(/already running/);
@@ -167,5 +172,119 @@ describe('MdxStream', () => {
     release();
     expect(await pending).toBeNull();
     expect(stream.finalizedEnd).toBe(RATE);
+  });
+});
+
+/**
+ * Expected gain of the output at model-rate sample j (relative to the origin) when chunk k's
+ * vocals are (k + 1) · input: the weighted mean of k + 1 over the chunks that contain j, with
+ * np.hanning (demix()) or demucs apply_model()'s triangle as weights.
+ */
+function expectedGain(weights: 'hann' | 'triangle', n: number, step: number, trim: number, j: number): number {
+  const half = Math.floor(n / 2);
+  const w = (i: number) =>
+    weights === 'hann' ? 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)) : (i < half ? i + 1 : n - i) / Math.max(half, n - half);
+  let sum = 0;
+  let total = 0;
+  for (let k = 0; k * step - trim <= j; k++) {
+    const i = j - (k * step - trim);
+    if (i >= n) continue;
+    sum += (k + 1) * w(i);
+    total += w(i);
+  }
+  return sum / total;
+}
+
+describe('MdxStream (SCNet)', () => {
+  const [left, right] = testSignal();
+  const n = SCNET.chunkSize;
+  const step = Math.floor((1 - SCNET.stream.overlap!) * n);
+  const trim = SCNET.stream.trim;
+
+  it('needs a 10 s chunk with 2048 samples of context before the origin', () => {
+    const stream = createModelStream(SCNET, identity);
+    stream.reset(10000);
+    const range = stream.nextInputRange();
+    expect(range.start).toBeLessThan(10000 - Math.ceil((trim * RATE) / 44100));
+    expect(range.end).toBeGreaterThan(10000 + Math.floor(((n - trim) * RATE) / 44100));
+    expect(range.end - range.start).toBeLessThan(Math.ceil((n * RATE) / 44100) + 200);
+  });
+
+  it.each([0, 98765])('identity model: perfect reconstruction with triangle weights after origin %i, no seams', async (origin) => {
+    const stream = createModelStream(SCNET, identity);
+    const run = await runStream(stream, left, right, origin, left.length);
+    const worstL = worstBlockErrorDb(run.left, left, origin, left.length);
+    const worstR = worstBlockErrorDb(run.right, right, origin, left.length);
+    console.log(`SCNet identity stream from ${origin}: ${run.chunks} chunks, worst 10 ms error L ${worstL.toFixed(1)} dB / R ${worstR.toFixed(1)} dB`);
+    expect(worstL).toBeLessThan(-60);
+    expect(worstR).toBeLessThan(-60);
+    let seamWorst = -Infinity;
+    for (let k = 1; ; k++) {
+      const seams = [k * step - trim, (k - 1) * step - trim + n].map((j) => origin + Math.round((j * RATE) / 44100));
+      if (seams[1]! + 960 > left.length) break;
+      for (const at of seams) seamWorst = Math.max(seamWorst, worstBlockErrorDb(run.left, left, at - 480, at + 480));
+    }
+    expect(seamWorst).toBeLessThan(-80);
+  });
+
+  it.each([
+    ['triangle', SCNET],
+    ['hann', KIM_VOCAL_2],
+  ] as const)('overlap-adds with %s weights', async (weights, model) => {
+    let chunks = 0;
+    // Chunk k's vocals: (k + 1) · input.
+    const scaling: MdxBackend = {
+      run: async (input) => {
+        const gain = ++chunks;
+        return input.map((v) => v * gain);
+      },
+    };
+    const stream = createModelStream(model, scaling);
+    const end = 30 * RATE;
+    const run = await runStream(stream, left, right, 0, end);
+    const size = model.chunkSize;
+    const hop = Math.floor((1 - model.stream.overlap!) * size);
+    let worst = 0;
+    // Through the first overlap (chunks 0 and 1), at the model-rate positions j.
+    for (let f = 0.02; f < 1; f += 0.08) {
+      const j = Math.round(hop - model.stream.trim + f * (size - hop));
+      const at = Math.round((j * RATE) / 44100);
+      let xy = 0;
+      let xx = 0;
+      for (let i = at - 240; i < at + 240; i++) {
+        xy += run.left[i]! * left[i]!;
+        xx += left[i]! * left[i]!;
+      }
+      worst = Math.max(worst, Math.abs(xy / xx - expectedGain(weights, size, hop, model.stream.trim, j)));
+    }
+    expect(worst).toBeLessThan(0.01);
+  });
+
+  it('does not peak-normalise its chunks (the model normalises them)', async () => {
+    const peaks: number[] = [];
+    const recording: MdxBackend = {
+      run: async (input) => {
+        peaks.push(input.reduce((m, v) => Math.max(m, Math.abs(v)), 0));
+        return input;
+      },
+    };
+    const quiet = left.map((v) => v * 0.01);
+    const loud = await (async () => {
+      const stream = createModelStream(SCNET, recording);
+      const range = stream.nextInputRange();
+      return stream.processNext(sliceZeroFilled(left, range.start, range.end), sliceZeroFilled(right, range.start, range.end));
+    })();
+    const stream = createModelStream(SCNET, recording);
+    const range = stream.nextInputRange();
+    const block = await stream.processNext(sliceZeroFilled(quiet, range.start, range.end), sliceZeroFilled(quiet, range.start, range.end));
+    expect(loud).not.toBeNull();
+    expect(peaks[1]! / peaks[0]!).toBeCloseTo(0.01, 2);
+    let err = 0;
+    let ref = 0;
+    for (let i = 0; i < block!.vocalsL.length; i++) {
+      err += (block!.vocalsL[i]! - quiet[block!.start + i]!) ** 2;
+      ref += quiet[block!.start + i]! ** 2;
+    }
+    expect(10 * Math.log10(err / ref)).toBeLessThan(-60);
   });
 });

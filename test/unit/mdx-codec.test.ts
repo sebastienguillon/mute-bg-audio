@@ -24,6 +24,7 @@ describe('MdxChunkCodec', () => {
 
   it('has the python-audio-separator geometry', () => {
     expect(codec.chunkSize).toBe(261120);
+    expect(codec.dims).toEqual([1, 4, 3072, 256]);
     expect(codec.tensorSize).toBe(4 * 3072 * 256);
     expect(MDX_MODELS['UVR-MDX-NET-Voc_FT']).toMatchObject({ compensate: 1.021, file: 'UVR-MDX-NET-Voc_FT.onnx', nFft: 7680, dimF: 3072, dimT: 256 });
     expect(MDX_MODELS.Kim_Vocal_2).toMatchObject({ compensate: 1.009, file: 'Kim_Vocal_2.onnx', hop: 1024, sampleRate: 44100 });

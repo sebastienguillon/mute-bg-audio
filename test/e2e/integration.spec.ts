@@ -10,6 +10,7 @@ import {
   expect,
   extensionPath,
   ExtensionWorld,
+  lookahead,
   playbackAdvances,
   record,
   sendToTab,
@@ -427,7 +428,8 @@ test.describe('page environments', () => {
 test.describe('builds', () => {
   test('the production build contains no debug bridge', async () => {
     test.setTimeout(120_000);
-    // `pnpm build` output (production mode), rebuilt from the current sources.
+    // `pnpm build` (or `pnpm build:scnet`) output, production mode, rebuilt from the current
+    // sources for the model under test (LOOKAHEAD_MODEL is inherited).
     execFileSync(resolve('node_modules/.bin/wxt'), ['build'], { stdio: 'pipe' });
     const markers = ['__bgmr_debug', 'bgmrDebug', 'bgmrStatus'];
     const scan = (dir: string) => {
@@ -445,7 +447,7 @@ test.describe('builds', () => {
       walk(dir);
       return Object.fromEntries(hits);
     };
-    expect(scan(resolve('.output/chrome-mv3'))).toEqual({});
+    expect(scan(resolve(`.output/chrome-mv3${lookahead.suffix}`))).toEqual({});
     // The scan finds them where they are (the e2e build).
     expect(Object.keys(scan(extensionPath)).sort()).toEqual([...markers].sort());
   });

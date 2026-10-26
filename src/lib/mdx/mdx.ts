@@ -4,6 +4,9 @@
  * [L.re, L.im, R.re, R.im] of torch.stft(center=True, reflect, periodic Hann) bins 0..dimF-1
  * with bins 0..2 zeroed; the model output (same layout, vocals) is zero-padded to nFft/2 + 1
  * bins and inverted with torch.istft. The residual is mix − compensate · vocals.
+ *
+ * Also the contract of every look-ahead model (MDX-Net, SCNet in scnet.ts): the backend that runs
+ * it, the codec between stereo chunks and its tensors, and the backend errors.
  */
 import { TorchStft } from '../dsp/stft';
 
@@ -50,8 +53,8 @@ export const MDX_MODELS: Record<MdxModelName, MdxModelConfig> = {
 /** Runs the separation model on one input tensor. */
 export interface MdxBackend {
   /**
-   * input: 4·dimF·dimT floats in [1, 4, dimF, dimT] layout, valid until the returned promise
-   * settles (callers reuse the buffer); resolves to vocals in the same layout.
+   * input: a tensor of the model's ChunkCodec (dims), valid until the returned promise settles
+   * (callers reuse the buffer); resolves to vocals in the same layout.
    */
   run(input: Float32Array): Promise<Float32Array>;
   /** Frees the model's resources (GPU memory) while it is not needed; the next run() reloads it. */
@@ -77,16 +80,33 @@ export class BackendTooSlowError extends BackendUnavailableError {
   }
 }
 
+/**
+ * Converts stereo chunks (model rate) to model input tensors and model output tensors back to
+ * stereo chunks. The returned arrays are buffers of the codec, overwritten by the next call of the
+ * same method.
+ */
+export interface ChunkCodec {
+  /** Samples per channel and chunk. */
+  readonly chunkSize: number;
+  /** Shape of the model's input and output tensors. */
+  readonly dims: readonly number[];
+  /** Floats per tensor (the product of dims). */
+  readonly tensorSize: number;
+  /** Model input tensor for one chunk (left/right: chunkSize samples each). */
+  encode(left: Float32Array, right: Float32Array): Float32Array;
+  /** Stereo waveform (chunkSize samples per channel) of a model output tensor. */
+  decode(out: Float32Array): [Float32Array, Float32Array];
+}
+
 /** Lowest bins zeroed in the model input (spek[:, :, :3, :] = 0). */
 const ZEROED_BINS = 3;
 
-/**
- * Converts stereo chunks to model tensors and model output tensors back to stereo chunks. The
- * returned arrays are buffers of the codec, overwritten by the next call of the same method.
- */
-export class MdxChunkCodec {
+/** MDX-Net chunk codec (see the top of this file). */
+export class MdxChunkCodec implements ChunkCodec {
   /** Samples per channel and chunk: hop · (dimT − 1). */
   readonly chunkSize: number;
+  /** [1, 4, dimF, dimT]. */
+  readonly dims: readonly number[];
   /** Floats per tensor: 4 · dimF · dimT. */
   readonly tensorSize: number;
   private readonly stft: TorchStft;
@@ -101,6 +121,7 @@ export class MdxChunkCodec {
     this.dimF = cfg.dimF;
     this.dimT = cfg.dimT;
     this.chunkSize = cfg.hop * (cfg.dimT - 1);
+    this.dims = [1, 4, cfg.dimF, cfg.dimT];
     this.tensorSize = 4 * cfg.dimF * cfg.dimT;
     if (this.stft.frameCount(this.chunkSize) !== cfg.dimT) throw new RangeError('hop · (dimT − 1) must give dimT STFT frames');
     if (cfg.dimF > this.stft.bins || cfg.dimF <= ZEROED_BINS) throw new RangeError(`dimF must be in (${ZEROED_BINS}, ${this.stft.bins}]`);
@@ -109,7 +130,6 @@ export class MdxChunkCodec {
     this.outR = new Float32Array(this.chunkSize);
   }
 
-  /** Model input tensor for one chunk (left/right: chunkSize samples each). */
   encode(left: Float32Array, right: Float32Array): Float32Array {
     if (left.length !== this.chunkSize || right.length !== this.chunkSize) {
       throw new RangeError(`MDX chunks must have ${this.chunkSize} samples per channel`);
@@ -122,7 +142,6 @@ export class MdxChunkCodec {
     return tensor;
   }
 
-  /** Stereo waveform (chunkSize samples per channel) of a model output tensor. */
   decode(out: Float32Array): [Float32Array, Float32Array] {
     if (out.length !== this.tensorSize) throw new RangeError(`MDX tensors must have ${this.tensorSize} elements`);
     const plane = this.dimF * this.dimT;

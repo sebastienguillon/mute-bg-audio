@@ -13,6 +13,7 @@ import {
   sbAdd,
   sbAppend,
   splitWebm,
+  waitFor,
   webmAppends,
   type DecoderLog,
   type Wav,
@@ -496,6 +497,41 @@ describe('MseAudioIngest', () => {
     expect(events.gone).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     expect(log.closed).toBe(log.created);
     for (const store of stores) expect(store.allocatedSamples + store.pooledSamples).toBe(0);
+  });
+});
+
+describe('MseAudioIngest.decoding', () => {
+  it('holds while the live decoder still owes output for the range, for at most a second', async () => {
+    // Batches of 25 outputs (0.5 s) every 10 ms.
+    const { ingest } = setup(fakeDecoderFactory(mix, undefined, { batch: 25, batchMs: 10 }));
+    ingest.handle(sbAdd(1, 1));
+    for (const msg of webmAppends(1, 1, webm)) ingest.handle(msg);
+    const end = 1501 * 960;
+    expect(ingest.decoding(1, 0, end)).toBe(true);
+    await new Promise((r) => setTimeout(r, 60));
+    const store = ingest.store(1)!;
+    const decoded = store.contiguousEnd(0);
+    expect(decoded).toBeGreaterThan(0);
+    expect(decoded).toBeLessThan(end);
+    expect(ingest.decoding(1, decoded, end)).toBe(true);
+    // Not for audio before what it owes, nor after what it was given.
+    expect(ingest.decoding(1, 0, decoded - SR)).toBe(false);
+    expect(ingest.decoding(1, end + SR, end + 2 * SR)).toBe(false);
+    expect(ingest.decoding(2, decoded, end)).toBe(false);
+    await waitFor(() => store.contiguousEnd(0) >= end, 5000, 'all output');
+    expect(ingest.decoding(1, 0, end)).toBe(false);
+  });
+
+  it('gives up on a decoder that delivers nothing after a second', () => {
+    const silent: DecoderFactory = () => ({ decode: () => {}, flush: async () => {}, reset: () => {}, close: () => {} });
+    const { ingest, clock } = setup(silent);
+    ingest.handle(sbAdd(1, 1));
+    for (const msg of webmAppends(1, 1, webm)) ingest.handle(msg);
+    expect(ingest.decoding(1, 0, SR)).toBe(true);
+    clock.now = 999;
+    expect(ingest.decoding(1, 0, SR)).toBe(true);
+    clock.now = 1000;
+    expect(ingest.decoding(1, 0, SR)).toBe(false);
   });
 });
 

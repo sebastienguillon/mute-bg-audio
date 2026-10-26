@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PROBE_LENGTH } from '../../src/lib/constants';
 import type { LookaheadCoreOptions } from '../../src/lib/lookahead/lookahead-core';
-import { MDX_MODELS, type MdxBackend } from '../../src/lib/mdx/mdx';
+import { KIM_VOCAL_2, SCNET } from '../../src/lib/lookahead/models';
+import type { MdxBackend } from '../../src/lib/mdx/mdx';
 import type { LaFromWorker } from '../../src/lib/protocol';
 import {
   SR,
@@ -26,7 +27,7 @@ import {
   type Wav,
 } from './helpers/lookahead-media';
 
-const COMPENSATE = MDX_MODELS.Kim_Vocal_2.compensate;
+const COMPENSATE = KIM_VOCAL_2.compensate;
 /** Input-rate samples finalized per MDX chunk after the first (step = 0.75 · 261120 at 44.1 kHz). */
 const STEP48 = Math.ceil((195840 * SR) / 44100);
 
@@ -217,6 +218,27 @@ describe('LookaheadCore processing', () => {
       for (let i = 0; i < b.residualL.length; i++) worst = Math.max(worst, Math.abs(b.residualL[i]! - mix.channels[0]![b.start + i - end]!));
     }
     expect(worst).toBe(0);
+    h.core.dispose();
+  });
+
+  it.each([
+    ['Kim_Vocal_2', KIM_VOCAL_2],
+    ['SCNet', SCNET],
+  ] as const)('%s: the first chunk waits for audio that is still being decoded instead of running short', async (_name, model) => {
+    // The hook's replay at the start hands the decoder everything appended so far; its output
+    // comes over the next 300 ms. A short first block would leave look-ahead without blocks while
+    // the chunk at its end runs.
+    const h = harness({ model, aheadSeconds: 12, backend: zeroBackend, decoderFactory: fakeDecoderFactory(mix, undefined, { batch: 25, batchMs: 10 }) });
+    h.core.setActiveTimeline(1);
+    appendCopies(h, 1, 1);
+    h.core.setPlayhead(playhead(h, 0));
+    await waitFor(() => h.blocks(1).length > 0, 20_000, 'the first block');
+    const step = Math.floor((1 - model.stream.overlap!) * model.chunkSize);
+    // The whole first chunk's block: everything before its overlap with the next chunk.
+    const full = Math.floor(((step - model.stream.trim!) * SR) / model.sampleRate);
+    expect(h.blocks(1)[0]!.speechL.length).toBeGreaterThan(full - 100);
+    await waitFor(() => h.blockEnd(1) >= 12 * SR, 20_000, 'blocks up to 12 s');
+    expect(blockSpan(h.blocks(1))!.contiguous).toBe(true);
     h.core.dispose();
   });
 

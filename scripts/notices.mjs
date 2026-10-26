@@ -1,6 +1,9 @@
-// The third-party notices shipped in the package (public/THIRD_PARTY_NOTICES.txt): what they list
-// and where each part comes from. scripts/make-notices.mjs writes the file; a unit test checks that
-// the committed file is what renderNotices() gives, and that the npm packages it covers are the
+// The third-party notices shipped in the package (THIRD_PARTY_NOTICES.txt): what they list and
+// where each part comes from. They depend on the build's look-ahead model (LOOKAHEAD_MODEL), so
+// there is one file per build: public/THIRD_PARTY_NOTICES.txt for the default build (Kim_Vocal_2),
+// public/THIRD_PARTY_NOTICES-scnet.txt for the SCNet build; wxt.config.ts packages the one of the
+// build as THIRD_PARTY_NOTICES.txt. scripts/make-notices.mjs writes them; the unit tests check that
+// the committed files are what renderNotices() gives, and that the npm packages they cover are the
 // ones a build bundles.
 //
 // Inputs (all in the repository, or installed):
@@ -10,19 +13,22 @@
 //   vendor/wxt/                 LICENSE of the WXT repository at the tag of the version in VERSION
 //   vendor/deepfilternet/       LICENSE-MIT, LICENSE-APACHE, crates.json (the Rust crates compiled into
 //                               df_bg.wasm with their licenses and copyright lines) and notices/
+//   vendor/scnet/               LICENSE and source.json (repository, commit, checkpoint, license grant)
 //   scripts/build-dfn-wasm.sh   the DeepFilterNet commit
-//   scripts/models.mjs          the packaged model and its SHA-256
+//   scripts/models.mjs          the packaged models and their SHA-256
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MODELS } from './models.mjs';
+import { lookaheadBuild, MODELS } from './models.mjs';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+/** The notices of the default build. */
 export const NOTICES = 'public/THIRD_PARTY_NOTICES.txt';
 const ORT_DIR = 'vendor/onnxruntime-web';
 const WXT_DIR = 'vendor/wxt';
 const DFN_DIR = 'vendor/deepfilternet';
+const SCNET_DIR = 'vendor/scnet';
 const CRATES = `${DFN_DIR}/crates.json`;
 const CRATE_NOTICES = `${DFN_DIR}/notices`;
 const UNICODE_LICENSE = `${CRATE_NOTICES}/LICENSE-UNICODE`;
@@ -164,10 +170,74 @@ function crateEntry(c, unicodeCopyright) {
   ].join('\n');
 }
 
+// ───────────── the look-ahead models ─────────────
+
+/** Section 5 of the notices: the look-ahead model of the build. */
+function modelSection(root, model) {
+  const file = lookaheadBuild(model).file;
+  const { sha256, url } = MODELS[file];
+  if (model === 'kim') {
+    const release = url.replace(/\/download\/([^/]+)\/[^/]+$/, '/tag/$1');
+    return {
+      title: `UVR MDX-Net vocal model ${file.replace(/\.onnx$/, '')}`,
+      license: 'see section 5',
+      lines: [
+        `File: models/${file} (SHA-256 ${sha256})`,
+        `Source: ${release}`,
+        '',
+        'Credit: Ultimate Vocal Remover (UVR) and its developers (core developers Anjok07 and aufr33;',
+        'https://github.com/Anjok07/ultimatevocalremovergui). Model by Kimberley Jensen (KimberleyJSN).',
+        'MDX-Net architecture by KUIELab and Woosung Choi.',
+        '',
+        'License: the publisher does not state a license for the model weights (the model repository',
+        'has no license file). The UVR GUI code is MIT-licensed according to its README, which asks',
+        'third-party applications that use the UVR models to credit UVR and its developers. The',
+        "model parameters used by this extension come from UVR's model_data.json.",
+      ],
+    };
+  }
+  const source = JSON.parse(readFileSync(join(root, SCNET_DIR, 'source.json'), 'utf8'));
+  const license = read(join(root, SCNET_DIR, 'LICENSE'));
+  if (!license.split('\n').some((l) => COPYRIGHT.test(l))) throw new Error(`${SCNET_DIR}/LICENSE: no copyright line`);
+  return {
+    title: 'SCNet vocal model (SCNet base)',
+    license: 'MIT',
+    lines: [
+      `File: models/${file} (SHA-256 ${sha256})`,
+      `Source: ${source.repository}, commit ${source.commit}`,
+      `Checkpoint: ${source.checkpoint.url}`,
+      `  (SHA-256 ${source.checkpoint.sha256})`,
+      '',
+      'Credit: SCNet: Sparse Compression Network for Music Source Separation, by Weinan Tong,',
+      'Jiaxu Zhu, Jun Chen, Shiyin Kang, Tao Jiang, Yang Li, Zhiyong Wu and Helen Meng',
+      `(${source.paper}). Code and weights by starrytong.`,
+      '',
+      'Modified: converted to ONNX for this extension, with the vocals stem only, the STFT and',
+      'inverse STFT outside the model, and the weights stored as float16. The conversion scripts',
+      'are in vendor/scnet/ of the extension\'s source code.',
+      '',
+      'License: MIT (below). The author states that the released pretrained weights are distributed',
+      'under the MIT License, like the source code, and that converted versions, including ONNX',
+      'exports, may be redistributed with appropriate attribution:',
+      source.licenseGrant,
+      '',
+      license,
+    ],
+  };
+}
+
 // ───────────── the notices ─────────────
 
-/** The notices file (with the UTF-8 BOM Chrome needs to show extension .txt files as UTF-8). */
-export function renderNotices(root = ROOT) {
+/** The notices file of the build with look-ahead model `model` (relative to the repository root). */
+export function noticesFile(model = 'kim') {
+  return `public/THIRD_PARTY_NOTICES${lookaheadBuild(model).suffix}.txt`;
+}
+
+/**
+ * The notices of the build with look-ahead model `model` ('kim' or 'scnet'), with the UTF-8 BOM
+ * Chrome needs to show extension .txt files as UTF-8.
+ */
+export function renderNotices(root = ROOT, model = 'kim') {
   const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
   const [ort, wxt, wxtBrowser] = bundledPackages(root);
   const ortLicense = vendored(root, ORT_DIR, 'LICENSE', ort);
@@ -196,8 +266,7 @@ export function renderNotices(root = ROOT) {
     c.notices.map((file) => ({ crate: c, file, text: read(join(root, CRATE_NOTICES, `${c.name}-${c.version}`, file)) })),
   );
 
-  const [modelFile, model] = Object.entries(MODELS).find(([, m]) => m.packaged);
-  const modelRelease = model.url.replace(/\/download\/([^/]+)\/[^/]+$/, '/tag/$1');
+  const lookahead = modelSection(root, model);
 
   const out = [
     'THIRD-PARTY SOFTWARE NOTICES',
@@ -210,7 +279,7 @@ export function renderNotices(root = ROOT) {
     toc('2. DeepFilterNet3', 'MIT OR Apache-2.0'),
     toc('3. Rust crates compiled into dfn/df_bg.wasm', 'MIT and others'),
     toc('4. WXT runtime', 'MIT'),
-    toc(`5. UVR MDX-Net vocal model ${modelFile.replace(/\.onnx$/, '')}`, 'see section 5'),
+    toc(`5. ${lookahead.title}`, lookahead.license),
     '  Appendix A. Apache License 2.0',
     `  Appendix B. Unicode License (${unicodeCrates.join(', ')})`,
     `  Appendix C. Third-party notices of ONNX Runtime ${ort.version}`,
@@ -273,19 +342,9 @@ export function renderNotices(root = ROOT) {
     wxtLicense,
     '',
     '',
-    heading(`5. UVR MDX-Net vocal model ${modelFile.replace(/\.onnx$/, '')}`),
+    heading(`5. ${lookahead.title}`),
     '',
-    `File: models/${modelFile} (SHA-256 ${model.sha256})`,
-    `Source: ${modelRelease}`,
-    '',
-    'Credit: Ultimate Vocal Remover (UVR) and its developers (core developers Anjok07 and aufr33;',
-    'https://github.com/Anjok07/ultimatevocalremovergui). Model by Kimberley Jensen (KimberleyJSN).',
-    'MDX-Net architecture by KUIELab and Woosung Choi.',
-    '',
-    'License: the publisher does not state a license for the model weights (the model repository',
-    'has no license file). The UVR GUI code is MIT-licensed according to its README, which asks',
-    'third-party applications that use the UVR models to credit UVR and its developers. The',
-    "model parameters used by this extension come from UVR's model_data.json.",
+    ...lookahead.lines,
     '',
     '',
     heading('Appendix A. Apache License 2.0'),

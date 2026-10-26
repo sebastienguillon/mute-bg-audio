@@ -1,15 +1,29 @@
-// Separation quality of the real UVR models through MdxStream, with onnxruntime-node (CPU EP).
-// Skipped when the model files are missing (run `pnpm fetch-models --all`).
+// Separation quality of the real models through their streams, with onnxruntime-node (CPU EP): the
+// look-ahead models of both builds (Kim_Vocal_2, SCNet) and the UVR comparison model. Skipped when
+// a model file is missing (run `pnpm fetch-models --all`).
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { MDX_MODELS, type MdxBackend, type MdxModelName } from '../../src/lib/mdx/mdx';
-import { MdxStream } from '../../src/lib/mdx/mdx-stream';
+import { createModelStream, KIM_VOCAL_2, mdxModel, SCNET, type LookaheadModel } from '../../src/lib/lookahead/models';
+import type { MdxBackend } from '../../src/lib/mdx/mdx';
 import { ROOT, readFixture, siSdr, sliceZeroFilled } from './helpers/dsp-audio';
 
-const MODELS: MdxModelName[] = ['Kim_Vocal_2', 'UVR-MDX-NET-Voc_FT'];
+interface ModelCase {
+  model: LookaheadModel;
+  /** The packaged models are in public/models; the comparison model only in .cache/models (fetch-models --all). */
+  dir: string;
+  /** Lowest speech SI-SDR of the vocals per channel, in dB. */
+  minSpeechSdr: number;
+}
 
-async function onnxBackend(path: string, dims: number[]): Promise<{ backend: MdxBackend; times: number[] }> {
+const MODELS: ModelCase[] = [
+  { model: KIM_VOCAL_2, dir: 'public/models', minSpeechSdr: 10 },
+  { model: mdxModel('UVR-MDX-NET-Voc_FT'), dir: '.cache/models', minSpeechSdr: 10 },
+  // Measured 22.1 dB (Kim_Vocal_2: 22.5 dB).
+  { model: SCNET, dir: 'public/models', minSpeechSdr: 20 },
+];
+
+async function onnxBackend(path: string, dims: readonly number[]): Promise<{ backend: MdxBackend; times: number[] }> {
   const ort = await import('onnxruntime-node');
   const session = await ort.InferenceSession.create(path, { executionProviders: ['cpu'] });
   const input = session.inputNames[0]!;
@@ -26,10 +40,8 @@ async function onnxBackend(path: string, dims: number[]): Promise<{ backend: Mdx
   return { backend, times };
 }
 
-describe.each(MODELS)('MDX model %s', (name) => {
-  const cfg = MDX_MODELS[name];
-  // The packaged model is in public/models; the comparison model only in .cache/models (fetch-models --all).
-  const path = join(ROOT, name === 'Kim_Vocal_2' ? 'public/models' : '.cache/models', cfg.file);
+describe.each(MODELS.map((c) => [c.model.name, c] as const))('model %s', (name, { model, dir, minSpeechSdr }) => {
+  const path = join(ROOT, dir, model.file);
 
   it.skipIf(!existsSync(path))(
     'separates speech from music in mix.wav',
@@ -38,8 +50,8 @@ describe.each(MODELS)('MDX model %s', (name) => {
       const speech = readFixture('speech.wav').channels;
       const music = readFixture('music.wav').channels;
       const n = mix[0]!.length;
-      const { backend, times } = await onnxBackend(path, [1, 4, cfg.dimF, cfg.dimT]);
-      const stream = new MdxStream(cfg, backend);
+      const { backend, times } = await onnxBackend(path, model.dims);
+      const stream = createModelStream(model, backend);
       stream.reset(0);
       const vocals = [new Float32Array(n), new Float32Array(n)];
       const totals: number[] = [];
@@ -53,7 +65,7 @@ describe.each(MODELS)('MDX model %s', (name) => {
         vocals[0]!.set(block.vocalsL.subarray(0, len), block.start);
         vocals[1]!.set(block.vocalsR.subarray(0, len), block.start);
       }
-      const residual = [0, 1].map((c) => mix[c]!.map((v, i) => v - cfg.compensate * vocals[c]![i]!));
+      const residual = [0, 1].map((c) => mix[c]!.map((v, i) => v - model.compensate * vocals[c]![i]!));
       const fmt = (x: number) => x.toFixed(2).padStart(6);
       const lines: string[] = [];
       let vocalGain = 0;
@@ -66,7 +78,7 @@ describe.each(MODELS)('MDX model %s', (name) => {
         lines.push(
           `  ${c ? 'R' : 'L'}: vocals vs speech ${fmt(vs)} dB (mix ${fmt(baseSpeech)}), residual vs music ${fmt(rm)} dB (mix ${fmt(baseMusic)})`,
         );
-        expect(vs).toBeGreaterThan(10);
+        expect(vs).toBeGreaterThan(minSpeechSdr);
         expect(vs - baseSpeech).toBeGreaterThan(8);
         expect(rm).toBeGreaterThan(baseMusic + 5);
       }

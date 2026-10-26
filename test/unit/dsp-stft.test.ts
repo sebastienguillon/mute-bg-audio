@@ -1,6 +1,25 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { TorchStft } from '../../src/lib/dsp/stft';
-import { maxAbsDiff, noise, timeMs } from './helpers/dsp-audio';
+import { maxAbsDiff, noise, ROOT, timeMs } from './helpers/dsp-audio';
+
+/** A case of test/fixtures/torch-stft-rect.json (vendor/scnet/stft_reference.py). */
+interface TorchCase {
+  nFft: number;
+  hop: number;
+  length: number;
+  frames: number;
+  /** Bins of `re` / `im` (bin-major, `frames` values each). */
+  bins: number[];
+  x: number[];
+  re: number[];
+  im: number[];
+  /** torch.istft(length) of the spectrogram inverseRe/inverseIm (all bins), when present. */
+  inverseRe?: number[];
+  inverseIm?: number[];
+  inverse?: number[];
+}
 
 describe('TorchStft', () => {
   it('frameCount = 1 + floor(length / hop)', () => {
@@ -109,6 +128,44 @@ describe('TorchStft', () => {
   it('rejects signals too short for reflect padding', () => {
     const stft = new TorchStft(8, 2);
     expect(() => stft.forward(new Float32Array(4), new Float32Array(25), new Float32Array(25))).toThrow(RangeError);
+  });
+
+  describe('with a rectangular window and normalized=True (SCNet)', () => {
+    const { cases } = JSON.parse(readFileSync(join(ROOT, 'test/fixtures/torch-stft-rect.json'), 'utf8')) as { cases: TorchCase[] };
+
+    it.each(cases.map((c) => [c.nFft, c.hop, c.length, c] as const))('matches torch.stft for nFft %i, hop %i, length %i', (nFft, hop, _length, c) => {
+      const stft = new TorchStft(nFft, hop, { window: 'rect', normalized: true });
+      expect(stft.frameCount(c.length)).toBe(c.frames);
+      const re = new Float32Array(stft.bins * c.frames);
+      const im = new Float32Array(stft.bins * c.frames);
+      stft.forward(Float32Array.from(c.x), re, im);
+      let worst = 0;
+      c.bins.forEach((bin, b) => {
+        for (let t = 0; t < c.frames; t++) {
+          worst = Math.max(worst, Math.abs(re[bin * c.frames + t]! - c.re[b * c.frames + t]!), Math.abs(im[bin * c.frames + t]! - c.im[b * c.frames + t]!));
+        }
+      });
+      expect(worst).toBeLessThan(1e-5);
+    });
+
+    it.each(cases.filter((c) => c.inverse).map((c) => [c.nFft, c.hop, c.length, c] as const))(
+      'matches torch.istft for nFft %i, hop %i, length %i',
+      (nFft, hop, length, c) => {
+        const stft = new TorchStft(nFft, hop, { window: 'rect', normalized: true });
+        const y = stft.inverse(c.inverseRe!, c.inverseIm!, stft.bins, c.frames, length);
+        expect(maxAbsDiff(y, c.inverse!)).toBeLessThan(1e-5);
+      },
+    );
+
+    it('istft(stft(x)) = x for SCNet\'s nFft 4096, hop 1024', () => {
+      const stft = new TorchStft(4096, 1024, { window: 'rect', normalized: true });
+      const x = noise(441344, 0.9, 77);
+      const frames = stft.frameCount(x.length);
+      const re = new Float32Array(stft.bins * frames);
+      const im = new Float32Array(stft.bins * frames);
+      stft.forward(x, re, im);
+      expect(maxAbsDiff(stft.inverse(re, im, stft.bins, frames, x.length), x)).toBeLessThan(1e-5);
+    });
   });
 
   it('speed for one MDX channel (logged)', () => {

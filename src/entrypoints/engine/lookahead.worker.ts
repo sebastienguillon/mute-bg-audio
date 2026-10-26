@@ -1,18 +1,23 @@
 // Look-ahead model worker: decodes the audio YouTube buffered ahead of the playhead (WebCodecs),
-// separates speech with the MDX-Net vocal model (ONNX Runtime Web, WebGPU) and streams the result
-// to the worklet. The logic lives in LookaheadCore; this file provides the browser backends.
+// separates speech with the build's vocal model (Kim_Vocal_2 or SCNet; ONNX Runtime Web, WebGPU)
+// and streams the result to the worklet. The logic lives in LookaheadCore; this file provides the
+// browser backends.
 import * as ort from 'onnxruntime-web/jspi';
 import type { LaToWorker, LookaheadStatus } from '@/lib/protocol';
 import type { Settings } from '@/lib/settings';
-import { BackendUnavailableError, MDX_MODELS, type MdxModelConfig } from '@/lib/mdx/mdx';
+import { BackendUnavailableError } from '@/lib/mdx/mdx';
 import { SessionBackend, type ModelSession } from '@/lib/mdx/session-backend';
 import { LookaheadCore, type DecoderFactory } from '@/lib/lookahead/lookahead-core';
+import { KIM_VOCAL_2, SCNET, type LookaheadModel } from '@/lib/lookahead/models';
 import type { FromLookaheadWorker, ToLookaheadWorker } from './messages';
 
-/** Model shipped with the extension (see scripts/fetch-models.mjs). */
-const MODEL: MdxModelConfig = MDX_MODELS.Kim_Vocal_2;
+/**
+ * The model this build ships (LOOKAHEAD_MODEL, a compile-time constant set by wxt.config.ts, which
+ * packages its file only). The other model's code is left out of the bundle.
+ */
+const MODEL: LookaheadModel = import.meta.env.LOOKAHEAD_MODEL === 'scnet' ? SCNET : KIM_VOCAL_2;
 /** Audio of one model run, in ms. */
-const CHUNK_MS = ((MODEL.hop * (MODEL.dimT - 1)) / MODEL.sampleRate) * 1000;
+const CHUNK_MS = (MODEL.chunkSize / MODEL.sampleRate) * 1000;
 const NO_GPU_REASON = 'No usable GPU for look-ahead processing. Using real-time mode.';
 
 const report = (status: LookaheadStatus) =>
@@ -46,7 +51,7 @@ async function createSession(): Promise<ModelSession> {
       if (ep === 'wasm') ort.env.wasm.numThreads = Math.min(8, Math.max(1, (navigator.hardwareConcurrency || 4) - 2));
       const session = await ort.InferenceSession.create(bytes, {
         // 'lazyRelease' frees the activation buffers after each run instead of caching their peak
-        // size (about 270 MB of GPU memory instead of 1.9 GB, for 5 % more time).
+        // size (Kim_Vocal_2: about 270 MB of GPU memory instead of 1.9 GB, for 5 % more time).
         executionProviders: [ep === 'webgpu' ? { name: 'webgpu', storageBufferCacheMode: 'lazyRelease' } : 'wasm'],
         graphOptimizationLevel: 'all',
       });
@@ -64,7 +69,7 @@ function wrapSession(session: ort.InferenceSession): ModelSession {
   const output = session.outputNames[0]!;
   return {
     async run(data) {
-      const tensor = new ort.Tensor('float32', data, [1, 4, MODEL.dimF, MODEL.dimT]);
+      const tensor = new ort.Tensor('float32', data, MODEL.dims);
       try {
         const result = await session.run({ [input]: tensor });
         const out = result[output]!;

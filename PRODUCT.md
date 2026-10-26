@@ -45,6 +45,8 @@ filter.
   dropped on 2026-10-23).
 - Look-ahead needs WebGPU; without it, and at playback speeds other than 1×, the real-time model is
   used. The package is about 103 MB, mostly the two models.
+- A second build uses SCNet (MIT-licensed weights) instead of Kim_Vocal_2 for look-ahead: package
+  about 58 MB, speech slightly less clean (about 0.4–1 dB SI-SDR), about twice the GPU time.
 - Host access is requested only for YouTube; other sites go through the popup (activeTab or an
   optional per-site permission). It never asks for access to all sites up front.
 - Known limits: sung lyrics are kept as voice; sound effects, laughter and ambience are reduced

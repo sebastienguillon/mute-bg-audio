@@ -1,9 +1,9 @@
 /**
  * Logic of the look-ahead worker (pure, testable): ingests the page's MSE audio appends
- * (demux → decoder → 48 kHz PcmStore per timeline), runs the MDX-Net separator ahead of the
- * playhead of the active timeline, streams {speech, residual} blocks to the worklet and answers
- * its alignment probes. The worker entry provides the model backend, the decoder factory and the
- * message ports.
+ * (demux → decoder → 48 kHz PcmStore per timeline), runs the build's separation model
+ * (./models.ts) ahead of the playhead of the active timeline, streams {speech, residual} blocks
+ * to the worklet and answers its alignment probes. The worker entry provides the model backend,
+ * the decoder factory and the message ports.
  *
  * Blocks follow docs/ARCHITECTURE.md: speech = compensate · model vocals and
  * residual = mix − speech, with mix the chunk's own input, so speech + residual is exactly the
@@ -18,17 +18,18 @@
  */
 import { SAMPLE_RATE } from '../constants';
 import { alignProbe } from '../dsp/align';
-import { BackendTooSlowError, BackendUnavailableError, TOO_SLOW_REASON, type MdxBackend, type MdxModelConfig } from '../mdx/mdx';
-import { MdxStream, type MdxStreamBlock } from '../mdx/mdx-stream';
+import { BackendTooSlowError, BackendUnavailableError, TOO_SLOW_REASON, type MdxBackend } from '../mdx/mdx';
+import type { MdxStream, MdxStreamBlock } from '../mdx/mdx-stream';
 import type { HookMessage, LaFromWorker, LaToWorker, LookaheadStatus, PlayheadInfo } from '../protocol';
 import { MseAudioIngest, type DecoderFactory } from './ingest';
+import { createModelStream, type LookaheadModel } from './models';
 import type { PcmStore } from './pcm-store';
 
 export type { AudioDecoderLike, DecoderFactory } from './ingest';
 export type { DecodedAudio } from './pcm-writer';
 
 export interface LookaheadCoreOptions {
-  model: MdxModelConfig;
+  model: LookaheadModel;
   backend: MdxBackend;
   decoderFactory: DecoderFactory;
   postWorklet: (msg: LaFromWorker, transfer?: Transferable[]) => void;
@@ -140,7 +141,7 @@ interface ProbeMatch {
 }
 
 export class LookaheadCore {
-  private readonly model: MdxModelConfig;
+  private readonly model: LookaheadModel;
   private readonly backend: MdxBackend;
   private readonly postWorklet: LookaheadCoreOptions['postWorklet'];
   private readonly onStatus: LookaheadCoreOptions['onStatus'];
@@ -246,7 +247,7 @@ export class LookaheadCore {
     // the worklet stores would evict the blocks around the playhead.
     const aheadSeconds = Math.min(opts.aheadSeconds ?? DEFAULT_AHEAD_SECONDS, WORKLET_BLOCK_SECONDS - WORKLET_BEHIND_SECONDS);
     this.ahead = Math.min(this.keepAhead, Math.round(aheadSeconds * SAMPLE_RATE));
-    this.stream = new MdxStream(opts.model, opts.backend);
+    this.stream = createModelStream(opts.model, opts.backend);
     this.ingest = new MseAudioIngest({
       decoderFactory: opts.decoderFactory,
       maxSamplesPerTimeline: this.keepBehind + this.keepAhead + STORE_SLACK_SECONDS * SAMPLE_RATE,
@@ -583,11 +584,13 @@ export class LookaheadCore {
     const available = store.contiguousEnd(required);
     let cut: number | null = null;
     if (available < end) {
-      // PCM evicted earlier (seek back, replay) is decoded again from the retained frames; the
-      // chunk waits for it rather than being cut.
+      // PCM evicted earlier (seek back, replay) is decoded again from the retained frames, and
+      // audio the page appended is still being decoded (the hook's replay at the start): the chunk
+      // waits for it rather than being cut.
       this.ingest.redecode(timelineId, start, Math.min(playhead + this.keepAhead, start + this.ahead + REDECODE_EXTRA_SECONDS * SAMPLE_RATE));
       const starving = playhead >= stream.finalizedEnd - END_SLACK_SECONDS * SAMPLE_RATE;
-      if (available <= required || available <= stream.finalizedEnd || !starving || this.ingest.redecoding(timelineId, available, end)) {
+      const decoding = this.ingest.redecoding(timelineId, available, end) || this.ingest.decoding(timelineId, available, end);
+      if (available <= required || available <= stream.finalizedEnd || !starving || decoding) {
         this.waitedForData = true;
         return null;
       }

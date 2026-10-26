@@ -5,7 +5,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EncodedAudioFrame } from '../../../src/lib/demux/index';
 import { LookaheadCore, type DecodedAudio, type DecoderFactory, type LookaheadCoreOptions } from '../../../src/lib/lookahead/lookahead-core';
-import { MDX_MODELS, type MdxBackend } from '../../../src/lib/mdx/mdx';
+import { KIM_VOCAL_2 } from '../../../src/lib/lookahead/models';
+import type { MdxBackend } from '../../../src/lib/mdx/mdx';
 import type { HookMessage, LaFromWorker, LookaheadStatus, PlayheadInfo } from '../../../src/lib/protocol';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -110,6 +111,12 @@ export interface FakeDecoderOptions {
    * difference for 13.5 ms, then −16.7 dB for 20 ms).
    */
   chromeOpus?: boolean;
+  /**
+   * Delivers the outputs in batches of this many, one batch every `batchMs` (default: all at once,
+   * in a microtask): a decoder that takes a while to work through a large append.
+   */
+  batch?: number;
+  batchMs?: number;
 }
 
 /** Codec delay of the Chrome-like fake decoder, in samples. */
@@ -137,7 +144,11 @@ export function fakeDecoderFactory(source: Wav, log: DecoderLog = newDecoderLog(
     let output = 0;
     const drain = () => {
       scheduled = false;
-      while (queue.length > 0 && !closed) onOutput(queue.shift()!);
+      for (let n = opts.batch ?? Infinity; queue.length > 0 && !closed && n > 0; n--) onOutput(queue.shift()!);
+      if (queue.length > 0 && !closed) {
+        scheduled = true;
+        setTimeout(drain, opts.batchMs ?? 0);
+      }
     };
     return {
       decode(frame: EncodedAudioFrame, timestamp: number) {
@@ -164,7 +175,9 @@ export function fakeDecoderFactory(source: Wav, log: DecoderLog = newDecoderLog(
           queueMicrotask(drain);
         }
       },
-      flush: async () => drain(),
+      flush: async () => {
+        while (queue.length > 0 && !closed) onOutput(queue.shift()!);
+      },
       reset: () => {
         queue.length = 0;
         output = 0;
@@ -245,7 +258,7 @@ export function createHarness(
   const statuses: LookaheadStatus[] = [];
   const clock = { now: 0 };
   const core = new LookaheadCore({
-    model: MDX_MODELS.Kim_Vocal_2,
+    model: KIM_VOCAL_2,
     backend: identityBackend,
     postWorklet: (msg, list) => {
       posts.push(transfer ? structuredClone(msg, { transfer: list ?? [] }) : msg);

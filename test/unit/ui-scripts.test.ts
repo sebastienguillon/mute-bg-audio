@@ -1,6 +1,7 @@
-// The repository scripts and the dev-server setup: third-party notices (reproducible, not stale,
-// covering what a build bundles), fetch-models through a symlinked path, the test-media generator
-// and the race-free fixture cache.
+// The repository scripts and the dev-server setup: third-party notices of each build (reproducible,
+// not stale, describing the model the build contains and covering what it bundles), the model
+// choice of the package.json scripts in any shell, fetch-models through a symlinked path, the
+// test-media generator and the race-free fixture cache.
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   cpSync,
@@ -17,14 +18,16 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { build } from 'wxt';
 import config from '../../wxt.config';
-import { bundledPackages, NOTICES, renderNotices } from '../../scripts/notices.mjs';
+import { LOOKAHEAD_MODELS, lookaheadBuild, MODELS } from '../../scripts/models.mjs';
+import { bundledPackages, NOTICES, noticesFile, renderNotices } from '../../scripts/notices.mjs';
 import { cached } from './helpers/fixtures';
 
 const ROOT = join(import.meta.dirname, '../..');
 const HAS_MODEL = existsSync(join(ROOT, 'public/models/Kim_Vocal_2.onnx'));
+const hasModel = (model: 'kim' | 'scnet') => existsSync(join(ROOT, 'public/models', lookaheadBuild(model).file));
 const dirs: string[] = [];
 
 function tempDir(): string {
@@ -37,13 +40,15 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe('third-party notices', () => {
+describe.each(LOOKAHEAD_MODELS)('third-party notices of the %s build', (model) => {
+  const path = join(ROOT, noticesFile(model));
+
   it('are up to date (run `pnpm make-notices`)', () => {
-    expect(readFileSync(join(ROOT, NOTICES), 'utf8') === renderNotices()).toBe(true);
+    expect(readFileSync(path, 'utf8') === renderNotices(ROOT, model)).toBe(true);
   });
 
   it('name the versions of the extension and of the bundled packages', () => {
-    const notices = readFileSync(join(ROOT, NOTICES), 'utf8');
+    const notices = readFileSync(path, 'utf8');
     const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string };
     expect(notices.startsWith(`﻿THIRD-PARTY SOFTWARE NOTICES\nMute BG Audio ${version}\n`)).toBe(true);
     const [ort, wxt, wxtBrowser] = bundledPackages();
@@ -52,20 +57,87 @@ describe('third-party notices', () => {
     expect(notices).toContain(`npm packages wxt ${wxt!.version} and @wxt-dev/browser ${wxtBrowser!.version}`);
   });
 
+  it('describe the look-ahead model the build contains, and no other', () => {
+    const notices = readFileSync(path, 'utf8');
+    const { file } = lookaheadBuild(model);
+    expect(notices).toContain(`File: models/${file} (SHA-256 ${MODELS[file].sha256})`);
+    if (model === 'kim') {
+      expect(notices).toContain('5. UVR MDX-Net vocal model Kim_Vocal_2');
+      expect(notices).not.toMatch(/scnet|starrytong/i);
+    } else {
+      const source = JSON.parse(readFileSync(join(ROOT, 'vendor/scnet/source.json'), 'utf8')) as { commit: string; licenseGrant: string };
+      // SCNet's MIT license with its copyright line, and the attribution.
+      const license = readFileSync(join(ROOT, 'vendor/scnet/LICENSE'), 'utf8').trimEnd();
+      expect(license).toContain('Copyright (c) 2024 starrytong');
+      expect(notices).toContain(`${license}\n`);
+      expect(notices).toContain('  5. SCNet vocal model (SCNet base) .......................... MIT');
+      expect(notices).toContain(`https://github.com/starrytong/SCNet, commit ${source.commit}`);
+      expect(notices).toContain(source.licenseGrant);
+      expect(notices).not.toMatch(/Kim_Vocal_2|MDX-Net|UVR/);
+    }
+  });
+});
+
+describe('third-party notices', () => {
+  it('of the default build are public/THIRD_PARTY_NOTICES.txt', () => {
+    expect(noticesFile()).toBe(NOTICES);
+    expect(noticesFile('scnet')).toBe('public/THIRD_PARTY_NOTICES-scnet.txt');
+  });
+
   it('refuse vendored license texts of another version than the installed one', () => {
     const root = tempDir();
     for (const path of ['package.json', 'scripts', 'vendor']) cpSync(join(ROOT, path), join(root, path), { recursive: true });
     symlinkSync(join(ROOT, 'node_modules'), join(root, 'node_modules'));
     expect(renderNotices(root)).toBe(renderNotices());
+    expect(renderNotices(root, 'scnet')).toBe(renderNotices(ROOT, 'scnet'));
     writeFileSync(join(root, 'vendor/onnxruntime-web/VERSION'), '1.29.0\n');
     expect(() => renderNotices(root)).toThrow(
       /vendor\/onnxruntime-web has the texts of onnxruntime-web 1\.29\.0, but \d+\.\d+\.\d+ is installed\. Run `node scripts\/make-notices\.mjs --fetch`\./,
     );
   });
 
-  it.skipIf(!HAS_MODEL)('cover every npm package a build bundles', async () => {
-    const outDir = tempDir();
-    await build({ root: ROOT, outDir, logger: quietLogger(), vite: () => ({ build: { sourcemap: true } }) });
+});
+
+// A production build of each look-ahead model (with source maps).
+describe.each(LOOKAHEAD_MODELS)('the %s build', (model) => {
+  const { file, suffix } = lookaheadBuild(model);
+  const other = LOOKAHEAD_MODELS.filter((m) => m !== model).map((m) => lookaheadBuild(m).file);
+  /** WXT's outDir: the build goes into a directory of it named by outDirTemplate. */
+  let outBase = '';
+  let outDir = '';
+
+  beforeAll(async () => {
+    if (!hasModel(model)) return;
+    outBase = realpathSync(mkdtempSync(join(tmpdir(), 'bgmr-build-')));
+    outDir = join(outBase, `chrome-mv3${suffix}`);
+    const saved = process.env.LOOKAHEAD_MODEL;
+    // wxt.config.ts reads it each time a build loads it.
+    process.env.LOOKAHEAD_MODEL = model;
+    try {
+      await build({ root: ROOT, outDir: outBase, logger: quietLogger(), vite: () => ({ build: { sourcemap: true } }) });
+    } finally {
+      if (saved === undefined) delete process.env.LOOKAHEAD_MODEL;
+      else process.env.LOOKAHEAD_MODEL = saved;
+    }
+  }, 240_000);
+
+  afterAll(() => {
+    if (outBase) rmSync(outBase, { recursive: true, force: true });
+  });
+
+  it.skipIf(!hasModel(model))(`goes to chrome-mv3${suffix} and contains exactly its model and its notices`, () => {
+    expect(readdirSync(outBase)).toEqual([`chrome-mv3${suffix}`]);
+    expect(readdirSync(join(outDir, 'models'))).toEqual([file]);
+    expect(readFileSync(join(outDir, 'THIRD_PARTY_NOTICES.txt'), 'utf8') === readFileSync(join(ROOT, noticesFile(model)), 'utf8')).toBe(true);
+    expect(files(outDir).filter((f) => /THIRD_PARTY_NOTICES/.test(f)).map((f) => f.slice(outDir.length + 1))).toEqual(['THIRD_PARTY_NOTICES.txt']);
+    // Only the selected model's code: the scripts do not name the other model's file.
+    const scripts = files(outDir).filter((f) => f.endsWith('.js'));
+    const mentions = (name: string) => scripts.filter((f) => readFileSync(f, 'utf8').includes(name)).map((f) => f.slice(outDir.length + 1));
+    expect(mentions(file)).toEqual([expect.stringMatching(/lookahead\.worker/)]);
+    for (const name of other) expect(mentions(name)).toEqual([]);
+  });
+
+  it.skipIf(!hasModel(model))('is covered by the notices for every npm package it bundles', () => {
     const bundled = new Set<string>();
     for (const map of files(outDir).filter((f) => f.endsWith('.map'))) {
       const { sources } = JSON.parse(readFileSync(map, 'utf8')) as { sources: string[] };
@@ -85,6 +157,30 @@ describe('fetch-models', () => {
     symlinkSync(ROOT, link);
     const out = execFileSync(process.execPath, [join(link, 'scripts/fetch-models.mjs')], { cwd: tmpdir(), encoding: 'utf8' });
     expect(out).toContain('✓ Kim_Vocal_2.onnx (cached)');
+  });
+});
+
+describe('package.json scripts', () => {
+  const { scripts } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
+  const withModel = (...args: string[]) =>
+    spawnSync(process.execPath, [join(ROOT, 'scripts/with-model.mjs'), ...args], { encoding: 'utf8', env: { ...process.env, LOOKAHEAD_MODEL: 'kim' } });
+
+  it('set no environment variables with shell syntax (pnpm runs them with cmd.exe on Windows)', () => {
+    expect(Object.entries(scripts).filter(([, line]) => /(^|&&|\|\||;)\s*[A-Za-z_]\w*=/.test(line))).toEqual([]);
+    for (const name of ['build:scnet', 'build:e2e:scnet', 'zip:scnet', 'test:e2e:scnet']) {
+      expect(scripts[name]).toMatch(/(^|&& )node scripts\/with-model\.mjs scnet (wxt|playwright) /);
+    }
+  });
+
+  it("choose the model through scripts/with-model.mjs: the command runs with LOOKAHEAD_MODEL set, its exit status is the script's", () => {
+    const echo = withModel('scnet', process.execPath, '-e', 'process.stdout.write(`${process.env.LOOKAHEAD_MODEL} ${JSON.stringify(process.argv.slice(1))}`)', 'a b', 'c"d');
+    expect(echo.status).toBe(0);
+    expect(echo.stdout).toBe('scnet ["a b","c\\"d"]');
+    expect(withModel('scnet', process.execPath, '-e', 'process.exit(3)').status).toBe(3);
+    expect(withModel('scnet', 'bgmr-no-such-command').status).toBe(1);
+    const usage = withModel('scnet');
+    expect(usage.status).toBe(2);
+    expect(usage.stderr).toContain('Usage: node scripts/with-model.mjs <kim|scnet> <command> [args...]');
   });
 });
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Downloads the look-ahead separation model into public/models/ (verified by SHA-256). It is packaged
-// with the extension; nothing is downloaded at runtime. --all also fetches the alternative model,
-// used by the comparison tests only, into .cache/models/ (never packaged). The models and their
-// hashes are in scripts/models.mjs.
+// Downloads the look-ahead separation model of the default build (Kim_Vocal_2) into public/models/
+// (verified by SHA-256). It is packaged with the extension; nothing is downloaded at runtime. The
+// SCNet build's model is committed to public/models/ and only checked. --all also fetches the
+// alternative model, used by the comparison tests only, into .cache/models/ (never packaged). The
+// models and their hashes are in scripts/models.mjs.
 //
 // Usage: node scripts/fetch-models.mjs [--all]
 import { createHash } from 'node:crypto';
@@ -44,10 +45,19 @@ async function fetchModel(name, { url, sha256: expected }, destDir) {
   console.log(`✓ ${name}${dest === cached ? ' (in .cache/models, not packaged)' : ''}`);
 }
 
+/** A model committed to the repository: checks that it is intact. */
+async function checkCommitted(name, { sha256: expected }) {
+  if (!(await verified(join(PACKAGED_MODELS_DIR, name), expected))) {
+    throw new Error(`public/models/${name} is missing or not the committed file. Restore it with \`git checkout public/models/${name}\`.`);
+  }
+  console.log(`✓ ${name} (in the repository)`);
+}
+
 async function main() {
   const all = process.argv.includes('--all');
   for (const [name, model] of Object.entries(MODELS)) {
-    if (model.packaged) await fetchModel(name, model, PACKAGED_MODELS_DIR);
+    if (!model.url) await checkCommitted(name, model);
+    else if (model.build) await fetchModel(name, model, PACKAGED_MODELS_DIR);
     else if (all) await fetchModel(name, model, CACHED_MODELS_DIR);
   }
 }

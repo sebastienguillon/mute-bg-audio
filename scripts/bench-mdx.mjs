@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Benchmarks the DSP primitives and the JavaScript side of MdxStream (identity model), and
-// optionally the real model on onnxruntime-node's CPU EP.
+// Benchmarks the DSP primitives and the JavaScript side of MdxStream (identity model) for both
+// look-ahead models, and optionally a real model on onnxruntime-node's CPU EP.
 //
-// Usage: node scripts/bench-mdx.mjs [--model Kim_Vocal_2|UVR-MDX-NET-Voc_FT]
+// Usage: node scripts/bench-mdx.mjs [--model Kim_Vocal_2|UVR-MDX-NET-Voc_FT|SCNet]
 import { build } from 'esbuild';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,7 +19,7 @@ const outfile = join(outDir, 'lib.mjs');
 await build({
   stdin: {
     contents: ['fft', 'stft', 'resample', 'align'].map((m) => `export * from './src/lib/dsp/${m}';`).join('\n') +
-      "\nexport * from './src/lib/mdx/mdx';\nexport * from './src/lib/mdx/mdx-stream';",
+      "\nexport * from './src/lib/mdx/mdx';\nexport * from './src/lib/mdx/mdx-stream';\nexport * from './src/lib/lookahead/models';",
     resolveDir: root,
     loader: 'ts',
   },
@@ -67,14 +67,15 @@ for (const n of [3840, 7680, 65536, 1 << 18]) {
   report(`RealFFT(${n}) forward`, `${((bench(() => { for (let r = 0; r < reps; r++) rfft.forward(x, re, im); }) / reps) * 1000).toFixed(1)} µs`);
 }
 
-// STFT / codec
-const cfg = lib.MDX_MODELS.Kim_Vocal_2;
-const codec = new lib.MdxChunkCodec(cfg);
-const chunkL = noise(codec.chunkSize, 2);
-const chunkR = noise(codec.chunkSize, 3);
-const tensor = codec.encode(chunkL, chunkR);
-report('MdxChunkCodec.encode (stereo chunk)', `${bench(() => codec.encode(chunkL, chunkR)).toFixed(1)} ms`);
-report('MdxChunkCodec.decode (stereo chunk)', `${bench(() => codec.decode(tensor)).toFixed(1)} ms`);
+// STFT / codecs
+for (const model of [lib.KIM_VOCAL_2, lib.SCNET]) {
+  const codec = model.createCodec();
+  const chunkL = noise(codec.chunkSize, 2);
+  const chunkR = noise(codec.chunkSize, 3);
+  const tensor = codec.encode(chunkL, chunkR);
+  report(`${model.name} codec encode (stereo chunk)`, `${bench(() => codec.encode(chunkL, chunkR)).toFixed(1)} ms`);
+  report(`${model.name} codec decode (stereo chunk)`, `${bench(() => codec.decode(tensor)).toFixed(1)} ms`);
+}
 
 // Resampler
 const sec = 10;
@@ -92,11 +93,13 @@ const probe = ref.slice(123456, 123456 + 4096);
 report('alignProbe 4096 vs 200000', `${bench(() => lib.alignProbe(probe, ref), 15).toFixed(2)} ms`);
 
 // MdxStream JS overhead (identity model)
-async function streamChunks(backend, seconds, onChunk) {
+/** Audio finalized per chunk (after the first), in seconds. */
+const stepSeconds = (model) => Math.floor((1 - model.stream.overlap) * model.chunkSize) / model.sampleRate;
+async function streamChunks(model, backend, seconds, onChunk) {
   const n = 48000 * seconds;
   const left = noise(n, 6);
   const right = noise(n, 7);
-  const stream = new lib.MdxStream(cfg, backend);
+  const stream = lib.createModelStream(model, backend);
   stream.reset(0);
   const slice = (x, s, e) => {
     const o = new Float32Array(e - s);
@@ -113,17 +116,24 @@ async function streamChunks(backend, seconds, onChunk) {
     onChunk(performance.now() - t);
   }
 }
-const identityTimes = [];
-await streamChunks({ run: async (x) => x }, 40, (t) => identityTimes.push(t));
-identityTimes.shift(); // warm-up
 const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
-report('MdxStream JS per chunk (identity model)', `${mean(identityTimes).toFixed(0)} ms mean, ${Math.max(...identityTimes).toFixed(0)} ms max (chunk step = ${(195840 / 44100).toFixed(2)} s of audio)`);
+for (const model of [lib.KIM_VOCAL_2, lib.SCNET]) {
+  const identityTimes = [];
+  await streamChunks(model, { run: async (x) => x }, 40, (t) => identityTimes.push(t));
+  identityTimes.shift(); // warm-up
+  report(
+    `${model.name} MdxStream JS per chunk (identity model)`,
+    `${mean(identityTimes).toFixed(0)} ms mean, ${Math.max(...identityTimes).toFixed(0)} ms max (chunk step = ${stepSeconds(model).toFixed(2)} s of audio)`,
+  );
+}
 
 if (modelName) {
-  const mcfg = lib.MDX_MODELS[modelName];
-  // The packaged model is in public/models, the comparison model in .cache/models (fetch-models --all).
-  const path = ['public/models', '.cache/models'].map((dir) => join(root, dir, mcfg.file)).find((p) => existsSync(p));
-  if (!path) throw new Error(`missing ${mcfg.file} (run pnpm fetch-models --all)`);
+  const models = { Kim_Vocal_2: lib.KIM_VOCAL_2, 'UVR-MDX-NET-Voc_FT': lib.mdxModel('UVR-MDX-NET-Voc_FT'), SCNet: lib.SCNET };
+  const model = models[modelName];
+  if (!model) throw new Error(`--model must be one of ${Object.keys(models).join(', ')}`);
+  // The packaged models are in public/models, the comparison model in .cache/models (fetch-models --all).
+  const path = ['public/models', '.cache/models'].map((dir) => join(root, dir, model.file)).find((p) => existsSync(p));
+  if (!path) throw new Error(`missing ${model.file} (run pnpm fetch-models --all)`);
   const ort = await import('onnxruntime-node');
   const session = await ort.InferenceSession.create(path, { executionProviders: ['cpu'] });
   const modelTimes = [];
@@ -131,15 +141,15 @@ if (modelName) {
   const backend = {
     run: async (data) => {
       const t = performance.now();
-      const res = await session.run({ [session.inputNames[0]]: new ort.Tensor('float32', data, [1, 4, mcfg.dimF, mcfg.dimT]) });
+      const res = await session.run({ [session.inputNames[0]]: new ort.Tensor('float32', data, model.dims) });
       modelTimes.push(performance.now() - t);
       return res[session.outputNames[0]].data;
     },
   };
-  await streamChunks(backend, 30, (t) => totals.push(t));
+  await streamChunks(model, backend, 30, (t) => totals.push(t));
   report(`${modelName} model run, CPU EP`, `${mean(modelTimes).toFixed(0)} ms mean per chunk`);
   report(`${modelName} JS overhead per chunk`, `${mean(totals.map((t, i) => t - modelTimes[i])).toFixed(0)} ms mean`);
-  report(`${modelName} real-time factor (CPU)`, `${(mean(totals) / (195840 / 44.1)).toFixed(3)}`);
+  report(`${modelName} real-time factor (CPU)`, `${(mean(totals) / (stepSeconds(model) * 1000)).toFixed(3)}`);
 }
 
 const width = Math.max(...rows.map(([n]) => n.length));

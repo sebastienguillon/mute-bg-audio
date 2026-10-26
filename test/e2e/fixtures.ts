@@ -5,17 +5,26 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { lookaheadBuild } from '../../scripts/models.mjs';
 import { SAMPLE_RATE } from '../../src/lib/constants';
 import type { MixerStats, TabStatus } from '../../src/lib/protocol';
 // @ts-expect-error plain JS module
 import { startServer } from './server.mjs';
 
+/** The look-ahead model of the build under test: LOOKAHEAD_MODEL, as when building (`pnpm test:e2e:scnet` sets it). */
+export const lookahead = lookaheadBuild();
+
 /**
- * The e2e build (`pnpm build:e2e`), which has the debug bridge the tests use (production builds do
- * not). BGMR_EXTENSION selects another build with it, e.g. `.output/chrome-mv3-dev` while `pnpm dev` runs.
+ * The e2e build of that model (`pnpm build:e2e`, `pnpm build:e2e:scnet`), which has the debug bridge
+ * the tests use (production builds do not). BGMR_EXTENSION selects another build with it, e.g.
+ * `.output/chrome-mv3-dev` while `pnpm dev` runs.
  */
-const outputDir = resolve(process.env.BGMR_EXTENSION ?? '.output/chrome-mv3-e2e');
-if (!existsSync(join(outputDir, 'manifest.json'))) throw new Error(`${outputDir} is missing. Run \`pnpm build:e2e\` first.`);
+const outputDir = resolve(process.env.BGMR_EXTENSION ?? `.output/chrome-mv3-e2e${lookahead.suffix}`);
+const buildCommand = `pnpm build:e2e${lookahead.suffix.replace('-', ':')}`;
+if (!existsSync(join(outputDir, 'manifest.json'))) throw new Error(`${outputDir} is missing. Run \`${buildCommand}\` first.`);
+if (!existsSync(join(outputDir, 'models', lookahead.file))) {
+  throw new Error(`${outputDir} does not contain models/${lookahead.file}: it was built for another look-ahead model than LOOKAHEAD_MODEL=${lookahead.name}.`);
+}
 export const extensionPath = realpathSync(outputDir);
 
 /**

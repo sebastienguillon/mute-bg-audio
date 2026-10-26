@@ -1,0 +1,2 @@
+# Model weights: never diff, merge or convert line endings
+*.onnx binary

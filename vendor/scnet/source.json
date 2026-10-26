@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/starrytong/SCNet",
+  "commit": "5d95bf96b19c3eede63248d171efeca8e3abb948",
+  "checkpoint": {
+    "url": "https://drive.google.com/file/d/1CdEIIqsoRfHn1SJ7rccPfyYioW3BlXcW/view",
+    "bytes": 42434545,
+    "sha256": "f8aff3bc8dd816aad392800d9d69519add719a2fbd22550af6f8cb2138d25ff5"
+  },
+  "paper": "https://arxiv.org/abs/2401.13276",
+  "licenseGrant": "https://github.com/starrytong/SCNet/issues/35#issuecomment-4999873539"
+}

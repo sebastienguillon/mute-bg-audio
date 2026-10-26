@@ -1,8 +1,9 @@
 // Smoke test against the real youtube.com. Opt-in (network, consent wall, ads):
 //   LIVE_YOUTUBE=1 pnpm exec playwright test youtube-live
+//   LIVE_YOUTUBE=1 LOOKAHEAD_MODEL=scnet pnpm exec playwright test youtube-live   (the SCNet e2e build)
 // Optional: YT_VIDEO=<id> (default: Kurzgesagt "The Egg", narration over music).
 import { chromium, expect, test } from '@playwright/test';
-import { extensionPath, ExtensionWorld, record } from './fixtures';
+import { extensionPath, ExtensionWorld, lookahead, record } from './fixtures';
 import { alignedDifference, outputLead, rms } from './audio';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -44,7 +45,10 @@ test('processes a real YouTube video', async () => {
       status = raw ? JSON.parse(raw) : null;
       const ad = await page.evaluate(() => !!document.querySelector('.ad-showing'));
       if (i % 5 === 0) console.log(i, ad ? '[ad]' : '', JSON.stringify(status));
-      if (status?.mode === 'lookahead' && !ad) break;
+      if (status?.mode === 'lookahead' && !ad) {
+        console.log(`${lookahead.name}: look-ahead about ${i + 1} s after play()`, JSON.stringify(status.lookahead));
+        break;
+      }
     }
     expect(status?.mode).toBe('lookahead');
     const rec = await record(page, 5);

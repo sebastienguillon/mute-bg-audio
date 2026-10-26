@@ -2,15 +2,23 @@
  * STFT / inverse STFT with the exact semantics of
  *   torch.stft(x, nFft, hop, window=torch.hann_window(nFft, periodic=True), center=True,
  *              pad_mode='reflect', normalized=False, onesided=True)
- * and the matching torch.istft(..., center=True, length=L).
+ * and the matching torch.istft(..., center=True, length=L). Options select a rectangular window
+ * (torch's window=None) and normalized=True (spectrum · nFft^−½, and · nFft^½ before the inverse).
  *
  * Spectrograms use a bin-major layout, `re[bin * frames + frame]`, which is the layout of one
- * channel plane of the MDX-Net input tensor [1, 4, dimF, dimT].
+ * channel plane of the models' input tensors [1, 4, bins, frames].
  */
 import { RealFFT } from './fft';
 
 /** torch.istft's NOLA threshold: the window-squared envelope must exceed this everywhere kept. */
 const NOLA_EPS = 1e-11;
+
+export interface TorchStftOptions {
+  /** 'hann': periodic Hann (default); 'rect': rectangular, torch's window=None. */
+  window?: 'hann' | 'rect';
+  /** torch's normalized=True (default false). */
+  normalized?: boolean;
+}
 
 export class TorchStft {
   readonly nFft: number;
@@ -20,6 +28,8 @@ export class TorchStft {
   private readonly pad: number;
   private readonly rfft: RealFFT;
   private readonly window: Float64Array;
+  /** Factor of the forward spectrum (normalized: nFft^−½, else 1). */
+  private readonly scale: number;
   private readonly frame: Float64Array;
   private readonly specRe: Float64Array;
   private readonly specIm: Float64Array;
@@ -31,7 +41,7 @@ export class TorchStft {
   /** First index >= nFft/2 where the cached envelope violates NOLA (or its length). */
   private nolaEnd = 0;
 
-  constructor(nFft: number, hop: number) {
+  constructor(nFft: number, hop: number, opts: TorchStftOptions = {}) {
     if (!Number.isInteger(nFft) || nFft < 2 || nFft % 2 !== 0) throw new RangeError(`nFft must be even, got ${nFft}`);
     if (!Number.isInteger(hop) || hop < 1 || hop > nFft) throw new RangeError(`hop must be in [1, nFft], got ${hop}`);
     this.nFft = nFft;
@@ -40,7 +50,9 @@ export class TorchStft {
     this.pad = nFft / 2;
     this.rfft = new RealFFT(nFft);
     this.window = new Float64Array(nFft);
-    for (let i = 0; i < nFft; i++) this.window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / nFft);
+    if (opts.window === 'rect') this.window.fill(1);
+    else for (let i = 0; i < nFft; i++) this.window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / nFft);
+    this.scale = opts.normalized ? 1 / Math.sqrt(nFft) : 1;
     this.frame = new Float64Array(nFft);
     this.specRe = new Float64Array(this.bins);
     this.specIm = new Float64Array(this.bins);
@@ -56,7 +68,7 @@ export class TorchStft {
    * Requires x.length > nFft/2 (reflect padding).
    */
   forward(x: ArrayLike<number>, outRe: Float32Array, outIm: Float32Array, bins = this.bins): void {
-    const { nFft, hop, pad, window, frame, specRe, specIm } = this;
+    const { nFft, hop, pad, window, frame, specRe, specIm, scale } = this;
     const length = x.length;
     const frames = this.frameCount(length);
     if (length <= pad) throw new RangeError(`reflect padding needs more than ${pad} samples, got ${length}`);
@@ -75,8 +87,8 @@ export class TorchStft {
       for (let i = 0; i < nFft; i++) frame[i] = padded[offset + i]! * window[i]!;
       this.rfft.forward(frame, specRe, specIm);
       for (let b = 0, o = t; b < bins; b++, o += frames) {
-        outRe[o] = specRe[b]!;
-        outIm[o] = specIm[b]!;
+        outRe[o] = specRe[b]! * scale;
+        outIm[o] = specIm[b]! * scale;
       }
     }
   }
@@ -129,10 +141,13 @@ export class TorchStft {
     return this.ola;
   }
 
-  /** Reciprocal window-squared envelope for `frames` frames (cached), and its NOLA limit. */
+  /**
+   * Reciprocal window-squared envelope for `frames` frames (cached), and its NOLA limit. It also
+   * undoes the forward normalisation (normalized: · nFft^½).
+   */
   private envelope(frames: number): Float64Array {
     if (this.envelopeFrames === frames) return this.invEnvelope;
-    const { nFft, hop, pad, window } = this;
+    const { nFft, hop, pad, window, scale } = this;
     const size = nFft + hop * (frames - 1);
     const env = new Float64Array(size);
     for (let t = 0; t < frames; t++) {
@@ -141,7 +156,7 @@ export class TorchStft {
     this.nolaEnd = size;
     for (let i = 0; i < size; i++) {
       if (i >= pad && env[i]! < NOLA_EPS && this.nolaEnd === size) this.nolaEnd = i;
-      env[i] = 1 / env[i]!;
+      env[i] = 1 / (scale * env[i]!);
     }
     this.invEnvelope = env;
     this.envelopeFrames = frames;

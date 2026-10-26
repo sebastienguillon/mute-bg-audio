@@ -95,6 +95,8 @@ const REDECODE_RETRY_MS = 5000;
 const REDECODE_MAX_BACKOFF_MS = 80_000;
 /** Frames appended more recently than this may still be in the live decoder: they are not decoded again. */
 const REDECODE_MIN_AGE_MS = 1000;
+/** A live decoder owing more output than this (seconds) is still decoding (see decoding()). */
+const PENDING_OUTPUT_SECONDS = 0.05;
 
 interface DecodeRun {
   readonly decoder: AudioDecoderLike;
@@ -107,6 +109,10 @@ interface DecodeRun {
    * this is the run's first timestamp plus the durations so far (timestamps may jitter around it).
    */
   nextPosition: number;
+  /** End of the output delivered so far (seconds; before any output, where the first frame lands). */
+  outputEnd: number;
+  /** When the decoder was last given a frame (ms). */
+  fedAt: number;
   /** Set once the decoder failed or was closed: outputs are ignored. */
   dead: boolean;
 }
@@ -249,6 +255,21 @@ export class MseAudioIngest {
         }
       }
     }
+  }
+
+  /**
+   * True while the live decoder of the timeline still owes output for [start, end): it was given
+   * the frames within the last REDECODE_MIN_AGE_MS and WebCodecs delivers their audio later.
+   */
+  decoding(timelineId: number, start: number, end: number): boolean {
+    const now = this.now();
+    for (const track of this.timelines.get(timelineId)?.tracks ?? []) {
+      const run = track.run;
+      if (!run || run.dead || now - run.fedAt >= REDECODE_MIN_AGE_MS) continue;
+      if (run.nextPosition - run.outputEnd <= PENDING_OUTPUT_SECONDS) continue;
+      if (run.outputEnd * SAMPLE_RATE < end && run.nextPosition * SAMPLE_RATE > start) return true;
+    }
+    return false;
   }
 
   /** True while a re-decode writing into [start, end) of the timeline is running. */
@@ -449,6 +470,7 @@ export class MseAudioIngest {
       try {
         // Stamped with the contiguous position: the run's outputs follow each other exactly.
         run.decoder.decode(frame, position);
+        run.fedAt = addedAt;
       } catch (e) {
         // The next frame starts a new decoder (unless the errors repeat).
         this.fail(track, run, errorMessage(e));
@@ -480,6 +502,7 @@ export class MseAudioIngest {
         this.unsupported(track, audio.channels.length);
         return;
       }
+      run.outputEnd = Math.max(run.outputEnd, audio.timestamp + (audio.channels[0]?.length ?? 0) / audio.sampleRate);
       this.listener.onData(track.timelineId);
     };
     const onError = (message: string) => {
@@ -490,7 +513,8 @@ export class MseAudioIngest {
     };
     try {
       const decoder = this.decoderFactory(config, onOutput, onError);
-      run = { decoder, writer, nextTime: NaN, tolerance: 0, nextPosition: position, dead: false };
+      const first = preroll[0]?.position ?? position;
+      run = { decoder, writer, nextTime: NaN, tolerance: 0, nextPosition: position, outputEnd: first, fedAt: this.now(), dead: false };
     } catch (e) {
       // The configuration cannot be decoded: no retry before the next initialization segment.
       track.failed = true;
@@ -555,7 +579,8 @@ export class MseAudioIngest {
       this.noteError(track, errorMessage(e));
       return;
     }
-    redecode = { range, run: { decoder, writer, nextTime: NaN, tolerance: 0, nextPosition: NaN, dead: false } };
+    // Not the live run: decoding() ignores it.
+    redecode = { range, run: { decoder, writer, nextTime: NaN, tolerance: 0, nextPosition: NaN, outputEnd: NaN, fedAt: -Infinity, dead: false } };
     track.redecodes.add(redecode);
     let flushed: Promise<void>;
     try {

@@ -25,8 +25,9 @@ web-ext.config.ts
 *.sln
 *.sw?
 
-# Downloaded model weights (see scripts/fetch-models.mjs)
-public/models/
+# Downloaded model weights (see scripts/fetch-models.mjs); the SCNet model is committed
+public/models/*
+!public/models/scnet_vocals.onnx
 # Test artifacts
 test-results/
 playwright-report/

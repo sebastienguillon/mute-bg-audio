@@ -6,6 +6,7 @@ import {
   debugStatus,
   expect,
   ExtensionWorld,
+  lookahead,
   mediaTime,
   playbackAdvances,
   record,
@@ -45,12 +46,14 @@ test.describe('YouTube-like MSE player', () => {
     const page = await context.newPage();
     const world = await ExtensionWorld.attach(page);
     await page.goto(`${YT}/mse.html`);
+    const t0 = Date.now();
     await startPlayback(page);
     const st = await waitForMode(page, ['lookahead'], 90_000);
+    console.log(`${lookahead.name}: look-ahead ${Date.now() - t0} ms after the start of playback`, JSON.stringify(st.status.lookahead));
     const sink = await world.waitForSinkLatency();
     const rec = await record(page, 6);
     const q = speechQuality(rec);
-    console.log('look-ahead', JSON.stringify(q), JSON.stringify(st.mixer), 'sink latency', sink, `(${ms(sink)} ms)`);
+    console.log('look-ahead', JSON.stringify(q), JSON.stringify(st.mixer), 'sink latency', sink, `(${ms(sink)} ms)`, JSON.stringify((await debugStatus(page))?.status.lookahead));
     expect(q.outRms).toBeGreaterThan(0.01);
     expect(q.improvement).toBeGreaterThan(12);
     // The output leads the element's audio by the sink latency (it is heard with the picture).

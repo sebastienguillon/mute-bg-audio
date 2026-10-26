@@ -7,7 +7,7 @@ music in web video while keeping speech. Everything runs on the user's device.
 
 | Mode | Where | Model | Added latency | When |
 |---|---|---|---|---|
-| **Look-ahead** | YouTube | UVR MDX-Net vocal model (ONNX Runtime Web, WebGPU) | none: output leads by the sink latency, in sync with the picture | YouTube, WebGPU available, the element plays at 1×, audio already buffered ahead |
+| **Look-ahead** | YouTube | UVR MDX-Net vocal model Kim_Vocal_2, or SCNet (one per build, see "Look-ahead models"; ONNX Runtime Web, WebGPU) | none: output leads by the sink latency, in sync with the picture | YouTube, WebGPU available, the element plays at 1×, audio already buffered ahead |
 | **Real-time** | YouTube + any tappable `<video>`/`<audio>` | DeepFilterNet3 (WASM, CPU) | L = 60 ms (more on devices with large audio buffers) | The fallback and standby while sound plays |
 | **Tab capture** | Any site (Chrome `tabCapture`) | DeepFilterNet3 | L + capture | Media that cannot be tapped (cross-origin without CORS, some DRM, players in cross-origin frames); needs an action click. In-page processing of the tab stands down meanwhile |
 | **Pass-through** | – | none | L | Enabled, but no model output for these frames (the real-time worker is still loading its model, or skipped a hop) |
@@ -53,7 +53,8 @@ YouTube page (renderer)
 └─ engine iframe (extension origin, OOPIF): src/entrypoints/engine/
      ├─ realtime.worker.ts   DeepFilterNet3 WASM, 480-sample hops (10 ms) of the mid channel
      └─ lookahead.worker.ts  demux (WebM/fMP4) → WebCodecs AudioDecoder → PcmStore (48 kHz)
-                             → MdxStream (resample 44.1 kHz, STFT, ONNX WebGPU, iSTFT, OLA)
+                             → MdxStream (resample 44.1 kHz, chunk codec: STFT, ONNX WebGPU,
+                               iSTFT; OLA) with the build's model (src/lib/lookahead/models.ts)
                              → blocks {speech, residual} sent to the worklet; answers alignment probes
 ```
 
@@ -133,6 +134,40 @@ in memory and in `storage.session`, so a service-worker restart in between does 
   turns false, the output bypasses (zero latency) unless look-ahead output plays, and only one
   hop per 250 ms is sent until the worker answers again. Idle does not reset this state.
 
+### Look-ahead models
+
+A build contains one look-ahead model, chosen when building with `LOOKAHEAD_MODEL`: `kim`
+(default, UVR MDX-Net Kim_Vocal_2) or `scnet` (SCNet base, vocals; `vendor/scnet/`).
+`wxt.config.ts` verifies and packages only that model's file, packages that build's notices as
+`THIRD_PARTY_NOTICES.txt`, writes to its own output directory and zip (suffix `-scnet`), and
+defines `import.meta.env.LOOKAHEAD_MODEL`, from which `lookahead.worker.ts` takes the model at
+compile time (the other model's code is not in the bundle).
+
+Everything model-specific is in the model's entry in `src/lib/lookahead/models.ts`
+(`LookaheadModel`): the file, the sample rate (44.1 kHz for both), the chunk size and tensor shape,
+a factory for its `ChunkCodec` (stereo chunk ↔ model tensors), the stream settings and
+`compensate`. `LookaheadCore` builds its `MdxStream` from it; the worker takes the tensor shape for
+ONNX Runtime and the chunk duration for the run timeout (5 × the audio of a chunk) from it.
+
+| | Kim_Vocal_2 | SCNet |
+|---|---|---|
+| Codec | `MdxChunkCodec`: periodic Hann STFT (nFft 7680, hop 1024), bins 0..3071 with 0..2 zeroed, `[1, 4, 3072, 256]` | `ScnetChunkCodec`: chunk zero-padded to 441,344 samples, rectangular normalized STFT (nFft 4096, hop 1024), all 2049 bins, `[1, 4, 2049, 432]` |
+| Chunk | 261,120 samples (5.9 s) | 441,000 samples (10 s) |
+| Overlap-add | 25 % overlap, `np.hanning` weights (demix()) | 25 % overlap, triangle weights (demucs apply_model()) |
+| Chunk level | peak-normalised before the model, vocals scaled back | as is (the graph normalises each chunk) |
+| Context before the origin (`trim`) | 3840 samples (nFft / 2) | 2048 samples (nFft / 2) |
+| `compensate` | 1.009 | 1 |
+
+`MdxStream` itself is model-agnostic: it schedules chunks on a grid anchored at the origin,
+resamples 48 ↔ 44.1 kHz, skips the model for silent chunks and overlap-adds with a divider, so the
+seams between blocks are exact whatever the weights. With SCNet a block is 7.5 s (one chunk step),
+and the input of the next chunk reaches 2.5 s beyond what it finalises (Kim_Vocal_2: 4.4 s and
+1.5 s). For both, when less audio is decoded than a chunk needs and less than 3 s of processed
+audio is left ahead of the playhead, the chunk runs with silence after the decoded audio, unless
+the decoder still owes audio the page has appended (`MseAudioIngest.decoding`, e.g. the hook's
+replay when the engine starts): then the chunk waits for it, so that the first block is a whole
+chunk's and not the few seconds decoded so far.
+
 ### Engine lifecycle (controller)
 
 * **Start**: on the first audible playback of a routed element while the tab is enabled. The
@@ -165,20 +200,22 @@ in memory and in `storage.session`, so a service-worker restart in between does 
 | `src/lib/protocol.ts` | All cross-context message types |
 | `src/lib/tab-status.ts` | Status aggregation over frames, badge, page classification, popup strings |
 | `src/lib/dsp/fft.ts` | Mixed-radix complex FFT (radix 2/3/4/5 + generic), real FFT helpers |
-| `src/lib/dsp/stft.ts` | `torch.stft`/`torch.istft`-compatible STFT (center, reflect pad, periodic Hann) |
+| `src/lib/dsp/stft.ts` | `torch.stft`/`torch.istft`-compatible STFT (center, reflect pad, periodic Hann or rectangular window, optionally normalized) |
 | `src/lib/dsp/resample.ts` | Windowed-sinc resampler (48 kHz ↔ 44.1 kHz), zero-phase, block API with margins |
 | `src/lib/dsp/align.ts` | FFT cross-correlation alignment of a probe against reference PCM |
 | `src/lib/demux/index.ts`, `types.ts` | Demuxer selection by SourceBuffer mime type; shared types and byte queue |
 | `src/lib/demux/webm.ts`, `mp4.ts` | Incremental demuxers producing codec config + timestamped frames |
 | `src/lib/demux/opus.ts` | Opus packet durations (TOC byte) and the OpusHead header |
 | `src/lib/lookahead/lookahead-core.ts` | Look-ahead worker logic: ingest, model scheduling ahead of the playhead, blocks, probes, status |
+| `src/lib/lookahead/models.ts` | The look-ahead models (`LookaheadModel`): file, codec, tensor shape, stream settings, compensate |
 | `src/lib/lookahead/ingest.ts` | Hook messages → demuxer → decoder runs → PCM per timeline (MediaSource) |
 | `src/lib/lookahead/frame-store.ts` | Encoded frames kept per SourceBuffer, to decode evicted audio again |
 | `src/lib/lookahead/pcm-writer.ts` | Writes one decoder's output into a PcmStore, seamlessly |
 | `src/lib/lookahead/pcm-store.ts` | Media-indexed stereo PCM ranges with eviction |
 | `src/lib/lookahead/stream-resampler.ts` | Block-wise resampling of a continuous stream with exact seams |
-| `src/lib/mdx/mdx.ts` | MDX-Net pre/post-processing (spectrogram layout, compensate) |
-| `src/lib/mdx/mdx-stream.ts` | Streaming chunk scheduler with 25 % overlap Hann OLA, 48 kHz in/out |
+| `src/lib/mdx/mdx.ts` | Model contract (`MdxBackend`, `ChunkCodec`, backend errors); MDX-Net pre/post-processing (`MdxChunkCodec`) |
+| `src/lib/mdx/scnet.ts` | SCNet pre/post-processing (`ScnetChunkCodec`: end padding, rectangular normalized STFT) |
+| `src/lib/mdx/mdx-stream.ts` | Streaming chunk scheduler with overlap-add (Hann or triangle weights), 48 kHz in/out |
 | `src/lib/mdx/session-backend.ts` | Model session lifecycle: lazy creation, timeouts, release after failures |
 | `src/lib/realtime/dfn.ts` | DeepFilterNet3 WASM wrapper (vendor/deepfilternet) |
 | `src/lib/realtime/rt-processor.ts` | Real-time worker logic: worklet hops in, delay-compensated speech out |
@@ -198,7 +235,8 @@ in memory and in `storage.session`, so a service-worker restart in between does 
 | `src/entrypoints/worklet.ts` | AudioWorkletProcessor around MixerCore |
 | `src/entrypoints/background.ts` | Service worker: tab status and badge, generic script injection, auto sites, tab capture, engine tokens |
 | `src/entrypoints/popup/`, `offscreen/` | Toolbar popup; tab-capture document |
-| `scripts/` | `fetch-models.mjs` + `models.mjs` (model download and hashes), `make-test-media.mjs`, `make-notices.mjs` + `notices.mjs` (third-party notices), `build-dfn-wasm.sh`, `bench-mdx.mjs`, `make-icons.mjs` |
+| `scripts/` | `fetch-models.mjs` + `models.mjs` (model download, hashes, the build of each look-ahead model), `with-model.mjs` (runs a command with `LOOKAHEAD_MODEL` set, in any shell), `make-test-media.mjs`, `make-notices.mjs` + `notices.mjs` (third-party notices of each build), `build-dfn-wasm.sh`, `bench-mdx.mjs`, `make-icons.mjs` |
+| `vendor/scnet/` | SCNet license, provenance and the scripts that make `public/models/scnet_vocals.onnx` |
 
 ## Pages, tabs and the background
 
@@ -251,13 +289,16 @@ in memory and in `storage.session`, so a service-worker restart in between does 
   imports the dev-server script (`src/entrypoints/engine/worker-url.ts`; builds use the worker
   chunk directly). ONNX Runtime is left out of Vite's dependency pre-bundling, because it imports
   its WASM loader from next to its own module.
-* Every build checks `public/models/Kim_Vocal_2.onnx` against its SHA-256 (from
-  `scripts/models.mjs`) and leaves any other file in `public/models/` out of the package.
-* Third-party notices ship as `THIRD_PARTY_NOTICES.txt`, linked from the popup.
-  `scripts/make-notices.mjs` writes them from `vendor/` (license texts of the installed ONNX
-  Runtime and WXT versions, DeepFilterNet and the Rust crates in its WASM build) and the installed
-  packages. A unit test fails when the committed file differs from what the script writes, or
-  when a build (with source maps) bundles an npm package the notices do not cover.
+* Every build checks its look-ahead model (`public/models/Kim_Vocal_2.onnx`, downloaded by
+  `pnpm fetch-models`, or the committed `public/models/scnet_vocals.onnx`) against its SHA-256
+  (from `scripts/models.mjs`) and leaves any other file in `public/models/` out of the package.
+* Third-party notices ship as `THIRD_PARTY_NOTICES.txt`, linked from the popup: the build's own
+  file (`public/THIRD_PARTY_NOTICES.txt`, or `public/THIRD_PARTY_NOTICES-scnet.txt` for SCNet), so
+  that they name the look-ahead model the package contains. `scripts/make-notices.mjs` writes them
+  from `vendor/` (license texts of the installed ONNX Runtime and WXT versions, DeepFilterNet and
+  the Rust crates in its WASM build, SCNet) and the installed packages. A unit test fails when a
+  committed file differs from what the script writes, or when a build (with source maps) bundles
+  an npm package the notices do not cover.
 
 ## Constraints every module must respect
 
