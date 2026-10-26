@@ -302,6 +302,120 @@ describe('MixerCore look-ahead path', () => {
     expect(maxError(h.outL, glitch, 3 * SR, rtOut(inL))).toBeGreaterThan(0.01);
   });
 
+  it('verifies at the sub-frame delay of the input: treble transients half a frame off keep the output, a seek still stops it', () => {
+    // Chrome resamples the element's audio when the output device runs at another rate (e.g.
+    // 44.1 kHz): the input then lies a fraction of a frame from the media. Here half a frame, with
+    // 1 ms bursts at 9-13 kHz (a hi-hat) every 0.1 s: at whole frames each burst fails MATCH_RATIO.
+    const frac = 0.5;
+    const off = SR + 333;
+    const off2 = -SR / 2 + 101;
+    const seek = 4 * SR + 64; // mid-quantum
+    const seekQuantum = seek - 64;
+    const frames = 7 * SR;
+    const d = 2400;
+    const speech = (t: number, c: number) => {
+      let s = 0;
+      for (let k = 1; k <= 6; k++) s += Math.sin((2 * Math.PI * 150 * k * t) / SR + c * k) / k;
+      return 0.08 * s;
+    };
+    const residual = (t: number, c: number) => {
+      let r = 0.05 * Math.sin((2 * Math.PI * 220 * t) / SR + c) + 0.04 * Math.sin((2 * Math.PI * 330 * t) / SR + 2 * c);
+      const k = Math.round(t / 4800);
+      const u = t - k * 4800;
+      if (Math.abs(u) < 200) r += 0.3 * Math.exp(-((u / 48) ** 2)) * Math.sin((2 * Math.PI * (9000 + 400 * (k % 11)) * u) / SR + c);
+      return r;
+    };
+    const n = 14 * SR;
+    const media: Media = {
+      speechL: Float32Array.from({ length: n }, (_, m) => speech(m, 0)),
+      speechR: Float32Array.from({ length: n }, (_, m) => speech(m, 0.6)),
+      residualL: Float32Array.from({ length: n }, (_, m) => residual(m, 0)),
+      residualR: Float32Array.from({ length: n }, (_, m) => residual(m, 1.3)),
+    };
+    const offsetAt = (f: number) => (f < seek ? off : off2);
+    const at = (f: number, c: number) => {
+      const t = f + offsetAt(f) + frac;
+      return speech(t, c === 0 ? 0 : 0.6) + residual(t, c === 0 ? 0 : 1.3);
+    };
+    const inL = Float32Array.from({ length: frames }, (_, f) => at(f, 0));
+    const inR = Float32Array.from({ length: frames }, (_, f) => at(f, 1));
+    const h = new MixerHarness(inL, inR);
+    const rt = new FakeRealtime(h, 'zero');
+    const la = new FakeLookahead(h, media, 1, offsetAt);
+    h.connectRt(rt);
+    h.connectLa(la);
+    la.sendBlocks(0, n, 12345);
+    h.config({ residualGain: G, lookahead: true, outputLatency: d, gapReduction: false });
+    h.runUntil(frames);
+    expect(la.probes).toBe(2);
+    expect(h.core.lockState).toBe('locked');
+    // Look-ahead output from the planned switch to the seek quantum, without a single dropout (a
+    // hold for one bad quantum dips the output by the whole signal, about 0.1).
+    const first = laStart(h, inL, L + FADE, seek);
+    expect(first).toBeLessThan(2 * SR);
+    expect(maxError(h.outL, first + FADE, seekQuantum, laOut(media, 0, off, 1, d))).toBeLessThan(5e-3);
+    expect(maxError(h.outR, first + FADE, seekQuantum, laOut(media, 1, off, 1, d))).toBeLessThan(5e-3);
+    // The seek stops look-ahead output at once (the seek quantum or the next), as at whole frames…
+    const detected = silenceFrom(h.outL, seekQuantum) - FADE;
+    expect([seekQuantum, seekQuantum + QUANTUM]).toContain(detected);
+    expect(maxError(h.outL, detected + FADE, detected + L, zero)).toBe(0);
+    // …and the new lock outputs the new position through the bursts again.
+    const relock = laStart(h, inL, detected + L + FADE, frames);
+    expect(relock).toBeLessThan(seekQuantum + 4096 + 20 * QUANTUM + 1.5 * SR);
+    expect(maxError(h.outL, relock + FADE, frames, laOut(media, 0, off2, 1, d))).toBeLessThan(5e-3);
+    expect(h.stats().at(-1)).toMatchObject({ mode: 'lookahead', locked: true, underruns: 0 });
+  });
+
+  it('follows a sub-frame delay that drifts past whole frames: the integer offset moves with it, without a dropout', () => {
+    // The fraction drifts in real playback (about a frame per half hour); here 2 frames in 6 s,
+    // over the same treble bursts as above.
+    const off = SR + 333;
+    const frames = 6 * SR;
+    const d = 2400;
+    const drift = (f: number) => (2 * f) / frames;
+    const speech = (t: number, c: number) => {
+      let s = 0;
+      for (let k = 1; k <= 6; k++) s += Math.sin((2 * Math.PI * 150 * k * t) / SR + c * k) / k;
+      return 0.08 * s;
+    };
+    const residual = (t: number, c: number) => {
+      let r = 0.05 * Math.sin((2 * Math.PI * 220 * t) / SR + c) + 0.04 * Math.sin((2 * Math.PI * 330 * t) / SR + 2 * c);
+      const k = Math.round(t / 4800);
+      const u = t - k * 4800;
+      if (Math.abs(u) < 200) r += 0.3 * Math.exp(-((u / 48) ** 2)) * Math.sin((2 * Math.PI * (9000 + 400 * (k % 11)) * u) / SR + c);
+      return r;
+    };
+    const n = 9 * SR;
+    const media: Media = {
+      speechL: Float32Array.from({ length: n }, (_, m) => speech(m, 0)),
+      speechR: Float32Array.from({ length: n }, (_, m) => speech(m, 0.6)),
+      residualL: Float32Array.from({ length: n }, (_, m) => residual(m, 0)),
+      residualR: Float32Array.from({ length: n }, (_, m) => residual(m, 1.3)),
+    };
+    const at = (f: number, c: number) => {
+      const t = f + off + drift(f);
+      return speech(t, c === 0 ? 0 : 0.6) + residual(t, c === 0 ? 0 : 1.3);
+    };
+    const inL = Float32Array.from({ length: frames }, (_, f) => at(f, 0));
+    const inR = Float32Array.from({ length: frames }, (_, f) => at(f, 1));
+    const h = new MixerHarness(inL, inR);
+    const rt = new FakeRealtime(h, 'zero');
+    const la = new FakeLookahead(h, media, 1, () => off);
+    h.connectRt(rt);
+    h.connectLa(la);
+    la.sendBlocks(0, n, 12345);
+    h.config({ residualGain: G, lookahead: true, outputLatency: d, gapReduction: false });
+    h.runUntil(frames);
+    // One lock for the whole run, and no hold (a hold outputs exact zeros for a quantum or more).
+    expect(la.probes).toBe(1);
+    const first = laStart(h, inL, L + FADE, frames);
+    expect(first).toBeLessThan(2 * SR);
+    expect(silenceFrom(h.outL, first + FADE)).toBe(-1);
+    // At the end the delay is 2 frames, and the output reads the media 2 frames further on.
+    expect(maxError(h.outL, frames - SR / 2, frames, laOut(media, 0, off + 2, 1, d))).toBeLessThan(5e-3);
+    expect(h.stats().at(-1)).toMatchObject({ mode: 'lookahead', locked: true, underruns: 0 });
+  });
+
   it('falls back to real-time at once on a flush, and at a planned moment when look-ahead is turned off', () => {
     const off = SR / 2 + 11;
     const { h, la, media, inL } = scenario(7 * SR, () => off);

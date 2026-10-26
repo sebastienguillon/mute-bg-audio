@@ -130,6 +130,21 @@ const UNLOCK_QUANTA = 8;
 const UNCOVERED_SECONDS = 0.5;
 /** Good quantum: Σ(x − v·mix)² < MATCH_RATIO · Σx². */
 const MATCH_RATIO = 0.25;
+/**
+ * Half-length of the interpolation filter (Blackman-windowed sinc, 9 taps) through which
+ * verification reads the media at the lock's sub-frame delay (see #verify).
+ */
+const FRAC_TAPS = 4;
+const FRAC_KERNEL = 2 * FRAC_TAPS + 1;
+/** Good quanta per refinement step of the sub-frame delay. */
+const FRAC_QUANTA = 4;
+/** Largest refinement step of the sub-frame delay (frames). */
+const MAX_FRAC_STEP = 0.25;
+/**
+ * Largest sub-frame delay (frames): beyond it, the lock's integer offset moves by one frame
+ * (more than half a frame, so that it cannot flip back and forth).
+ */
+const RECENTRE_FRAC = 0.75;
 /** Mean square per sample and channel below which the input counts as silent (−70 dBFS). */
 const SILENCE_POWER = 1e-7;
 /** Mean square above which v·mix counts as clearly not silent (−50 dBFS). */
@@ -354,6 +369,22 @@ export class MixerCore {
   readonly #uncoveredLimit: number;
   #sumXm = 0;
   #sumMm = 0;
+  /** Sub-frame delay of the lock: the input at f matches the media at f + offset + #lockFrac. */
+  #lockFrac = 0;
+  /** Sums of the next refinement step of #lockFrac (see #refineFrac) and the good quanta in them. */
+  #fracNum = 0;
+  #fracDen = 0;
+  #fracQuanta = 0;
+  /**
+   * Weights of the media at −FRAC_TAPS … FRAC_TAPS frames for its value and for its slope at the
+   * sub-frame delay #kernelFrac.
+   */
+  readonly #fracKernel = new Float64Array(FRAC_KERNEL);
+  readonly #slopeKernel = new Float64Array(FRAC_KERNEL);
+  #kernelFrac = NaN;
+  /** Mix of the lock's media for the verified quantum and FRAC_TAPS frames on each side. */
+  readonly #winL = new Float64Array(QUANTUM + 2 * FRAC_TAPS);
+  readonly #winR = new Float64Array(QUANTUM + 2 * FRAC_TAPS);
   /** The newest input quantum confirmed the lock: look-ahead output is allowed. */
   #laVerified = false;
   /** Look-ahead was turned off while it played: its output continues until a planned switch. */
@@ -948,27 +979,49 @@ export class MixerCore {
     this.#laVerified = verdict >= V_GOOD && this.#lock === LOCK_LOCKED;
   }
 
+  /**
+   * Compares input quantum [f0, f0 + n) with v · mix at media f + offset + #lockFrac. The media
+   * is read at the sub-frame delay because Chrome resamples the element's audio when the output
+   * device runs at another rate than the AudioContext (e.g. 44.1 kHz): the input then lies a
+   * fraction of a frame away from the decoded media, a fraction that changes with every start of
+   * playback, and at whole frames treble transients (cymbals, sibilants) fail MATCH_RATIO as it
+   * approaches half a frame. Good quanta refine the delay (#refineFrac).
+   */
   #verify(f0: number, n: number): number {
+    if (!this.#readMedia(f0, n)) {
+      if (++this.#uncoveredRun >= this.#uncoveredLimit) this.#unlock(this.#frame);
+      return V_NONE;
+    }
+    this.#uncoveredRun = 0;
+    if (this.#kernelFrac !== this.#lockFrac) this.#makeKernels();
+    const h = this.#fracKernel;
+    const g = this.#slopeKernel;
+    const winL = this.#winL;
+    const winR = this.#winR;
     const inL = this.#inL;
     const inR = this.#inR;
     const mask = this.#inMask;
-    const timeline = this.#lockTimeline;
-    const offset = this.#lockOffset;
     const v = this.#lockGain;
     let p = 0;
     let e = 0;
     let mm = 0;
     let xm = 0;
+    let es = 0;
+    let ss = 0;
     for (let i = 0; i < n; i++) {
-      const m = f0 + i + offset;
-      const b = this.#blocks.find(timeline, m, this.#verifyCursor);
-      if (b === null) {
-        if (++this.#uncoveredRun >= this.#uncoveredLimit) this.#unlock(this.#frame);
-        return V_NONE;
+      // The media at f0 + i + offset + #lockFrac (ml, mr) and its slope (sl, sr).
+      let ml = 0;
+      let mr = 0;
+      let sl = 0;
+      let sr = 0;
+      for (let t = 0; t < FRAC_KERNEL; t++) {
+        const a = winL[i + t]!;
+        const b = winR[i + t]!;
+        ml += h[t]! * a;
+        mr += h[t]! * b;
+        sl += g[t]! * a;
+        sr += g[t]! * b;
       }
-      const j = m - b.start;
-      const ml = b.speechL[j]! + b.residualL[j]!;
-      const mr = b.speechR[j]! + b.residualR[j]!;
       const k = (f0 + i) & mask;
       const xl = inL[k]!;
       const xr = inR[k]!;
@@ -978,13 +1031,17 @@ export class MixerCore {
       e += dl * dl + dr * dr;
       mm += ml * ml + mr * mr;
       xm += xl * ml + xr * mr;
+      es += dl * sl + dr * sr;
+      ss += sl * sl + sr * sr;
     }
-    this.#uncoveredRun = 0;
     // The comparisons are NaN-safe: a block with non-finite samples makes the quantum bad.
     if (p > SILENCE_POWER * 2 * n) {
       if (!(e < MATCH_RATIO * p)) return this.#onBad(f0);
       this.#sumXm = GAIN_FORGET * this.#sumXm + xm;
       this.#sumMm = GAIN_FORGET * this.#sumMm + mm;
+      this.#fracNum += es;
+      this.#fracDen += ss;
+      if (++this.#fracQuanta >= FRAC_QUANTA) this.#refineFrac();
       return this.#onGood();
     }
     const vm = v * v * mm;
@@ -998,6 +1055,95 @@ export class MixerCore {
       if (this.#lock === LOCK_NONE) this.#presented = Math.min(this.#presented, this.#badStart);
     }
     return V_NEUTRAL;
+  }
+
+  /**
+   * Reads the lock's mix at media f0 + offset − FRAC_TAPS + j into #winL/#winR[j]
+   * (j < n + 2 · FRAC_TAPS). False when a block is missing for media of the quantum itself;
+   * missing neighbours (the edges of the stored media) count as silence.
+   */
+  #readMedia(f0: number, n: number): boolean {
+    const blocks = this.#blocks;
+    const timeline = this.#lockTimeline;
+    const cursor = this.#verifyCursor;
+    const winL = this.#winL;
+    const winR = this.#winR;
+    const m0 = f0 + this.#lockOffset - FRAC_TAPS;
+    const len = n + 2 * FRAC_TAPS;
+    let j = 0;
+    while (j < len) {
+      const b = blocks.find(timeline, m0 + j, cursor);
+      if (b === null) {
+        if (j >= FRAC_TAPS && j < FRAC_TAPS + n) return false;
+        winL[j] = 0;
+        winR[j] = 0;
+        j++;
+        continue;
+      }
+      const to = Math.min(len, b.end - m0);
+      for (let o = m0 + j - b.start; j < to; j++, o++) {
+        winL[j] = b.speechL[o]! + b.residualL[o]!;
+        winR[j] = b.speechR[o]! + b.residualR[o]!;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Weights of the media at −FRAC_TAPS … FRAC_TAPS frames from f + offset for its value at
+   * f + offset + #lockFrac (Blackman-windowed sinc K(t − #lockFrac)) and for its slope there
+   * (−K′(t − #lockFrac)).
+   */
+  #makeKernels(): void {
+    const frac = this.#lockFrac;
+    const h = this.#fracKernel;
+    const g = this.#slopeKernel;
+    const c = Math.PI / (FRAC_TAPS + 1);
+    for (let t = 0; t < FRAC_KERNEL; t++) {
+      const x = t - FRAC_TAPS - frac;
+      const u = c * (x + FRAC_TAPS + 1);
+      const w = 0.42 - 0.5 * Math.cos(u) + 0.08 * Math.cos(2 * u);
+      if (x === 0) {
+        // sinc′(0) = 0, w′(0) = 0.
+        h[t] = 1;
+        g[t] = 0;
+        continue;
+      }
+      const px = Math.PI * x;
+      const sinc = Math.sin(px) / px;
+      const dSinc = (Math.cos(px) - sinc) / x;
+      const dw = c * (0.5 * Math.sin(u) - 0.16 * Math.sin(2 * u));
+      h[t] = w * sinc;
+      g[t] = -(dw * sinc + w * dSinc);
+    }
+    this.#kernelFrac = frac;
+  }
+
+  /**
+   * One Gauss-Newton step of the sub-frame delay from the last FRAC_QUANTA good quanta: the input
+   * x ≈ v · mix(m + frac + Δ) ≈ v · (mix + Δ · mix′), so Δ = Σ(x − v · mix) · mix′ / (v · Σ mix′²),
+   * with mix and mix′ interpolated at m + frac. The linear model underestimates Δ for treble far
+   * off, so the steps converge without overshooting.
+   */
+  #refineFrac(): void {
+    const step = this.#fracNum / (this.#lockGain * this.#fracDen);
+    this.#fracNum = 0;
+    this.#fracDen = 0;
+    this.#fracQuanta = 0;
+    // Non-finite: media without slope (digital silence).
+    if (!Number.isFinite(step)) return;
+    let frac = this.#lockFrac + Math.min(MAX_FRAC_STEP, Math.max(-MAX_FRAC_STEP, step));
+    // The delay drifts (about a frame per half hour of playback): the integer offset follows it,
+    // so that the fraction stays within RECENTRE_FRAC. Moving the offset of the output read goes
+    // through a look-ahead → look-ahead crossfade (#select).
+    if (frac > RECENTRE_FRAC) {
+      frac -= 1;
+      this.#lockOffset += 1;
+    } else if (frac < -RECENTRE_FRAC) {
+      frac += 1;
+      this.#lockOffset -= 1;
+    }
+    this.#lockFrac = frac;
   }
 
   /** A good quantum (its LS sums are already accumulated): refine v, count towards the lock. */
@@ -1079,6 +1225,10 @@ export class MixerCore {
     this.#lockGain = msg.gain;
     this.#sumXm = 0;
     this.#sumMm = 0;
+    this.#lockFrac = 0;
+    this.#fracNum = 0;
+    this.#fracDen = 0;
+    this.#fracQuanta = 0;
     this.#goodRun = 0;
     this.#badRun = 0;
     this.#uncoveredRun = 0;

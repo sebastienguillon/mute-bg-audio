@@ -107,7 +107,17 @@ in memory and in `storage.session`, so a service-worker restart in between does 
   playhead and returns `{ timelineId, mediaEnd, gain }`. The worklet then verifies the lock
   continuously by comparing its input against `gain · (speech + residual)` at `f + offset`; a
   mismatch for about 20 ms (8 quanta: a seek, an ad switch, a glitch) drops the lock, and
-  look-ahead output stops as soon as the newest input quantum does not match.
+  look-ahead output stops as soon as the newest input quantum does not match. When the output
+  device runs at another rate than the AudioContext (44.1 kHz, e.g. MacBook speakers), Chrome
+  resamples the element's audio, and the input lies a fraction of a frame from the decoded media,
+  a fraction that changes with every start of playback (steps of 128 frames at the device rate)
+  and drifts slowly (about one frame per 28 minutes in the recordings measured). Verification
+  therefore reads the media at `f + offset + δ` through a 9-tap windowed-sinc interpolator, with
+  the lock's sub-frame delay δ refined from the good quanta; when δ passes ±0.75 the integer
+  offset moves by one frame instead. Compared at whole frames, treble transients (cymbals,
+  sibilants) fail as δ approaches half a frame, and each failed quantum interrupts look-ahead
+  output (a hold, or bypass for up to 1.5 s while the real-time worker is unhealthy). Look-ahead
+  output stays at whole frames (δ is below 21 µs).
 * **Playback state**: the controller sends `{ type: 'playback', playing }` for the current
   element whenever it changes (and after every worklet or worker connection); `playing` means
   not paused, not seeking, not ended, `readyState` ≥ HAVE_FUTURE_DATA and `playbackRate` 1.
