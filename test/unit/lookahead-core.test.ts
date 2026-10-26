@@ -347,6 +347,26 @@ describe('LookaheadCore probes', () => {
     h.core.dispose();
   });
 
+  it('forgets the prediction on a seek: after a seek back by the length of repeating content, a probe resolves at the playhead', async () => {
+    // The two copies hold the same audio 30 s apart: after the seek, the input also matches the
+    // position predicted from the match before it, 30 s further on.
+    const h = await probeHarness();
+    const frameEnd = 10_000_000;
+    h.clock.now = 1000;
+    h.core.setPlayhead(playhead(h, 50, { paused: false }));
+    h.core.onProbe({ type: 'probe', id: 1, frameEnd, data: probeData(50 * SR) });
+    expect(h.posts[h.posts.length - 1]).toMatchObject({ id: 1, found: true, mediaEnd: 50 * SR });
+    // A seek back to 20 s; playback resumes, and 1 s later (1.1 s of input with the seek's stall) a probe.
+    h.clock.now = 1100;
+    h.core.setPlayhead(playhead(h, 20, { paused: false, seeking: true }));
+    h.core.setPlayhead(playhead(h, 20, { paused: false }));
+    h.clock.now = 2100;
+    h.core.setPlayhead(playhead(h, 21, { paused: false }));
+    h.core.onProbe({ type: 'probe', id: 2, frameEnd: frameEnd + 1.1 * SR, data: probeData(21 * SR) });
+    expect(h.posts[h.posts.length - 1]).toMatchObject({ id: 2, found: true, mediaEnd: 21 * SR });
+    h.core.dispose();
+  });
+
   it('answers found:false for unrelated audio or audio far from the playhead', async () => {
     const h = await probeHarness();
     h.core.setPlayhead(playhead(h, 20));

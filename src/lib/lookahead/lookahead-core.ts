@@ -302,6 +302,10 @@ export class LookaheadCore {
     if (this.disposed) return;
     const expected = this.playheadNow();
     if (p.seeking || (expected !== null && Math.abs(p.time - expected) > PLAYHEAD_JUMP_SECONDS)) this.seekSeen = true;
+    // A seek moves the input elsewhere in the media: a prediction from an earlier match no longer
+    // applies (in repeating content it would still match, at the old position). A playhead jump
+    // alone keeps it: the playhead may be what is wrong.
+    if (p.seeking) this.lastMatch = null;
     // Nothing is processed at other speeds: the playhead moving on meanwhile is not falling behind.
     if (this.playhead && p.rate !== this.playhead.rate) {
       this.seekSeen = true;
