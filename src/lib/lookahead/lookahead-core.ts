@@ -83,8 +83,11 @@ const PLAYHEAD_JUMP_SECONDS = 1;
 const MAX_EXTRAPOLATION_MS = 1000;
 /**
  * When the next chunk's input is not fully decoded (end of the media, or the page stopped
- * appending) and less than this much processed audio remains ahead of the playhead, the chunk is
- * processed with silence after the decoded audio and blocks stop at its end.
+ * appending) and less than this much processed audio, plus the time of a model run at the
+ * measured real-time factor, remains ahead of the playhead, the chunk is processed with silence
+ * after the decoded audio and blocks stop at its end. The run must end before the processed audio
+ * does: a run takes the real-time factor times a chunk step, so at 0.6 it takes 4.5 s with SCNet
+ * (more than this slack) and 2.7 s with Kim_Vocal_2.
  */
 const END_SLACK_SECONDS = 3;
 /** The first chunk after a reset tolerates this much missing audio before the first decoded sample. */
@@ -588,7 +591,9 @@ export class LookaheadCore {
       // audio the page appended is still being decoded (the hook's replay at the start): the chunk
       // waits for it rather than being cut.
       this.ingest.redecode(timelineId, start, Math.min(playhead + this.keepAhead, start + this.ahead + REDECODE_EXTRA_SECONDS * SAMPLE_RATE));
-      const starving = playhead >= stream.finalizedEnd - END_SLACK_SECONDS * SAMPLE_RATE;
+      // The slack covers the cut chunk's own run (none before the first measurement).
+      const runSeconds = (this.rtf ?? 0) * stream.stepSeconds;
+      const starving = playhead >= stream.finalizedEnd - (END_SLACK_SECONDS + runSeconds) * SAMPLE_RATE;
       const decoding = this.ingest.redecoding(timelineId, available, end) || this.ingest.decoding(timelineId, available, end);
       if (available <= required || available <= stream.finalizedEnd || !starving || decoding) {
         this.waitedForData = true;

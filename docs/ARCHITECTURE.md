@@ -162,11 +162,19 @@ ONNX Runtime and the chunk duration for the run timeout (5 × the audio of a chu
 resamples 48 ↔ 44.1 kHz, skips the model for silent chunks and overlap-adds with a divider, so the
 seams between blocks are exact whatever the weights. With SCNet a block is 7.5 s (one chunk step),
 and the input of the next chunk reaches 2.5 s beyond what it finalises (Kim_Vocal_2: 4.4 s and
-1.5 s). For both, when less audio is decoded than a chunk needs and less than 3 s of processed
-audio is left ahead of the playhead, the chunk runs with silence after the decoded audio, unless
-the decoder still owes audio the page has appended (`MseAudioIngest.decoding`, e.g. the hook's
-replay when the engine starts): then the chunk waits for it, so that the first block is a whole
-chunk's and not the few seconds decoded so far.
+1.5 s). For both, when less audio is decoded than a chunk needs and the processed audio left
+ahead of the playhead is less than 3 s plus one model run (a chunk step times the measured
+real-time factor: 4.5 s for SCNet at 0.6, 2.7 s for Kim_Vocal_2; 3 s alone until the speed is
+measured), the chunk runs with silence after the decoded audio, so that its run ends before the
+processed audio does, unless the decoder still owes audio the page has appended
+(`MseAudioIngest.decoding`, e.g. the hook's replay when the engine starts): then the chunk waits
+for it, so that the first block is a whole chunk's and not the few seconds decoded so far. Chunks
+run cut at the end of every video, and often when the page buffers little ahead (live streams,
+limited bandwidth). A cut chunk adds less new audio than a whole one, so a short page buffer
+costs more model runs (SCNet at 0.6 with 9 s buffered: a third more), and the margin cannot close
+every gap: with less than about two runs plus the 3 s buffered ahead, the runs follow each other
+with less than 3 s to spare, and with less than about two runs (9 s for SCNet at 0.6) the blocks
+run out before each run ends.
 
 ### Engine lifecycle (controller)
 

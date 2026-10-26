@@ -110,6 +110,11 @@ export class MdxStream {
     return this.origin + this.outEnd;
   }
 
+  /** Seconds of audio each chunk finalizes after the first (one step of the chunk grid). */
+  get stepSeconds(): number {
+    return this.step / this.modelRate;
+  }
+
   /** True when the last processNext() ran the model (false: a silent chunk, which skips it). */
   get lastRanModel(): boolean {
     return this.ranModel;
