@@ -2,8 +2,7 @@
 // Renders assets/icon.svg to public/icon/<size>.png (picked up by WXT for the manifest icons, and
 // the toolbar icon of a tab where the extension is on) and its greyed-out variant to
 // public/icon/off/<size>.png (the toolbar icon everywhere else: see ACTION_ICON_PATHS in
-// src/lib/tab-status.ts), with Playwright's Chromium, so the text in the SVG uses the same font
-// stack as the browser.
+// src/lib/tab-status.ts), with Playwright's Chromium.
 //
 // Usage: node scripts/make-icons.mjs
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -17,6 +16,9 @@ const VARIANTS = [
   // control, so that on and off differ in colour and in contrast, on light and dark toolbars.
   { dir: 'public/icon/off', sizes: [16, 32], filter: 'grayscale(1) opacity(0.45)' },
 ];
+// The 128 px icon is the one of the Chrome Web Store and the install dialog: the store asks for
+// 96 × 96 px of artwork with 16 px of transparent padding on each side.
+const PADDING = { 128: 16 };
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const svg = await readFile(join(root, 'assets/icon.svg'), 'utf8');
 
@@ -28,10 +30,12 @@ try {
   for (const { dir, sizes, filter } of VARIANTS) {
     await mkdir(join(root, dir), { recursive: true });
     for (const size of sizes) {
+      const pad = PADDING[size] ?? 0;
       await page.setViewportSize({ width: size, height: size });
       await page.setContent(
         `<!doctype html><html><body style="margin:0;background:transparent">` +
-          `<img src="${src}" width="${size}" height="${size}" style="display:block;filter:${filter}"></body></html>`,
+          `<img src="${src}" width="${size - 2 * pad}" height="${size - 2 * pad}" ` +
+          `style="display:block;margin:${pad}px;filter:${filter}"></body></html>`,
       );
       await page.locator('img').evaluate((img) => img.decode());
       const png = await page.screenshot({ omitBackground: true, clip: { x: 0, y: 0, width: size, height: size } });

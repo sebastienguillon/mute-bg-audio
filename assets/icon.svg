@@ -1,4 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#16a34a"/>
-  <text x="32" y="32" dy="0.35em" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="26" font-weight="600" fill="#ffffff">RB</text>
+  <!-- Voices in front, music behind: a speech bubble with three voice bars over a faded music note.
+       Straight edges lie on a 2-unit grid (1 px of the 32 px toolbar icon). -->
+  <defs>
+    <g id="bubble">
+      <rect x="0" y="16" width="54" height="40" rx="13"/>
+      <path d="M6 48C7 55 6 59 2 63C11 62 18 59 23 55Z"/>
+    </g>
+    <!-- Cuts the note back around the bubble. -->
+    <mask id="behind">
+      <rect width="64" height="64" fill="#fff"/>
+      <use href="#bubble" stroke="#000" stroke-width="7" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <g fill="#16a34a" opacity="0.5" mask="url(#behind)">
+    <ellipse cx="38.6" cy="26" rx="10" ry="7.5" transform="rotate(-22 38.6 26)"/>
+    <rect x="44" y="0" width="4" height="26"/>
+    <path d="M48 0C49 7.4 55.4 10.3 59.1 14.8C62.8 19.3 63.2 25.4 59.9 31.2C60.7 25.4 57 20.9 48 17.2Z"/>
+  </g>
+  <use href="#bubble" fill="#16a34a"/>
+  <g fill="#fff">
+    <rect x="14" y="30" width="6" height="12" rx="3"/>
+    <rect x="24" y="24" width="6" height="24" rx="3"/>
+    <rect x="34" y="28" width="6" height="16" rx="3"/>
+  </g>
 </svg>
