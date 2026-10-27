@@ -56,14 +56,15 @@ filter.
   directly.
 - The project's own code is MIT-licensed (LICENSE); bundled third-party components keep their own
   licences.
-- Must be settled before Chrome Web Store publication:
-  - The publisher of the Kim_Vocal_2 model weights states no licence.
-  - The icon (assets/icon.svg) is a placeholder with the initials "RB" from the old name. The owner
-    will say when to start on it; don't redesign it unprompted.
+- Must be settled before Chrome Web Store publication: the publisher of the Kim_Vocal_2 model
+  weights states no licence.
 
 ## Brand Commitments
 
 - Name: **Mute BG Audio** (decided 2026-10-24). The repository and package are `mute-bg-audio`.
+- Logo (assets/icon.svg, 2026-10-27): a green speech bubble with three white voice bars, in front of
+  a faded music note: the voices stay in front, the music goes to the background. Its green
+  (#16a34a) is the popup's accent colour. It has no text, so it reads at 16 px in the toolbar.
 - On-device only: no audio, video IDs or browsing data leave the browser; no servers are involved.
 - No account and no tracking: no sign-in, analytics or telemetry of any kind.
 - Free and open source (MIT): public repository, no paid tier or premium features.
@@ -75,8 +76,8 @@ filter.
   "Remove" −45 to −56 dB in look-ahead, −23 dB in real-time. Not yet measured on real-world videos
   or on Windows, Linux or slower GPUs.
 - Docs: README.md, docs/ARCHITECTURE.md, public/THIRD_PARTY_NOTICES.txt.
-- Assets: assets/icon.svg (placeholder) and the PNG icons rendered from it by
-  scripts/make-icons.mjs into public/icon.
+- Assets: assets/icon.svg (the logo) and the PNG icons rendered from it by scripts/make-icons.mjs
+  into public/icon.
 - There are no users, reviews, ratings, store listing, store screenshots, testimonials or press
   yet. Do not invent any.
 
